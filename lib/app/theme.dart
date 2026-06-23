@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Paper + brushed-metal palette. Warm, quiet, non-social.
 class PostmarkColors {
@@ -17,8 +18,7 @@ ThemeData buildPostmarkTheme() {
       primary: PostmarkColors.ink,
       surface: PostmarkColors.paper,
     ),
-    textTheme: base.textTheme.apply(
-      fontFamily: 'serif',
+    textTheme: GoogleFonts.loraTextTheme(base.textTheme).apply(
       bodyColor: PostmarkColors.ink,
       displayColor: PostmarkColors.ink,
     ),
