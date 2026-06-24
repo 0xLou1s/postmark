@@ -73,12 +73,21 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: MachineFrame(slotChild: viewfinder),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: 320,
+                      height: 470,
+                      child: MachineFrame(slotChild: viewfinder),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            const Spacer(),
             ShutterButton(
               onPressed: _onShutter,
               enabled: !_busy && cam != null && cam.value.isInitialized,

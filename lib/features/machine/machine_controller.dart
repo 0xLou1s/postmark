@@ -47,7 +47,7 @@ class MachineController extends ChangeNotifier {
 
 final machineControllerProvider =
     ChangeNotifierProvider<MachineController>((ref) {
-  final m = MachineController();
-  ref.onDispose(m.dispose);
-  return m;
+  // ChangeNotifierProvider already disposes the returned notifier on teardown;
+  // adding ref.onDispose(m.dispose) would dispose it twice and throw.
+  return MachineController();
 });
