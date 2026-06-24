@@ -13,7 +13,8 @@ import 'widgets/machine_frame.dart';
 import 'widgets/shutter_button.dart';
 import '../printing/printing_screen.dart';
 
-// macOS: camera_avfoundation is iOS-only — use image_picker instead.
+// macOS/desktop: camera_avfoundation is iOS-only — use image_picker instead.
+// Also falls back to picker when camera reports no-camera error (e.g. simulator).
 bool get _usePicker =>
     !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
@@ -40,8 +41,11 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     if (_busy) return;
     setState(() => _busy = true);
 
-    if (_usePicker) {
-      // macOS / desktop: pick from gallery
+    final hasError = !_usePicker &&
+        ref.read(machineControllerProvider).error != null;
+
+    if (_usePicker || hasError) {
+      // macOS / desktop / no-camera (simulator): pick from gallery
       final picker = ImagePicker();
       final picked = await picker.pickImage(source: ImageSource.gallery);
       if (!mounted) return;
@@ -93,13 +97,22 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
       final cam = m.controller;
 
       if (m.error != null) {
-        viewfinder = Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Camera error:\n${m.error}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 12),
+        // No camera (e.g. simulator) — show picker hint instead of error text.
+        viewfinder = StampFrame(
+          child: Container(
+            color: const Color(0xFF1C1C1C),
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add_photo_alternate_outlined,
+                      color: Colors.white38, size: 48),
+                  SizedBox(height: 12),
+                  Text('Press shutter\nto pick a photo',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38, fontSize: 13)),
+                ],
+              ),
             ),
           ),
         );
@@ -119,11 +132,11 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
       }
     }
 
-    final cam = _usePicker
-        ? null
-        : ref.watch(machineControllerProvider).controller;
-    final cameraReady =
-        _usePicker || (cam != null && cam.value.isInitialized);
+    final mState = _usePicker ? null : ref.watch(machineControllerProvider);
+    final cam = mState?.controller;
+    final cameraReady = _usePicker ||
+        mState?.error != null ||
+        (cam != null && cam.value.isInitialized);
 
     return Scaffold(
       appBar: AppBar(

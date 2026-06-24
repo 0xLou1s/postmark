@@ -14,6 +14,10 @@ class MachineController extends ChangeNotifier {
     notifyListeners();
     try {
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        error = 'No camera found on this device.';
+        return;
+      }
       final back = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
