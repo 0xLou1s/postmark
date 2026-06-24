@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Postmark uses the camera to print your photos into stamps.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Postmark accesses your photos to print them into stamps.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
