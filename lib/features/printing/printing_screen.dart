@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/widgets/perforated_border.dart';
+import '../../domain/stamp.dart';
 import '../preview/preview_screen.dart';
 
 /// Freezes the captured photo, then animates the stamp ejecting upward out of
@@ -64,9 +65,11 @@ class _PrintingScreenState extends State<PrintingScreen>
                     scale: scale,
                     child: SizedBox(
                       width: 240,
-                      height: 320,
-                      child: StampFrame(
-                        child: Image.memory(widget.image, fit: BoxFit.cover),
+                      child: AspectRatio(
+                        aspectRatio: kStampAspectRatio,
+                        child: StampFrame(
+                          child: Image.memory(widget.image, fit: BoxFit.cover),
+                        ),
                       ),
                     ),
                   ),

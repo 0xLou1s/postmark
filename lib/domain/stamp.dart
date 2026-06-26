@@ -1,5 +1,10 @@
 import 'dart:typed_data';
 
+/// Canonical stamp shape (width / height), matching the machine frame's window
+/// opening (463 x 500 px). The viewfinder and every printed stamp share this so
+/// "what you frame is what you print" — the perforation hugs the frame.
+const double kStampAspectRatio = 463 / 500;
+
 class Stamp {
   const Stamp({
     required this.id,

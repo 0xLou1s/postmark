@@ -22,7 +22,7 @@ class MonthSection extends StatelessWidget {
           crossAxisCount: 3,
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
-          childAspectRatio: 3 / 4,
+          childAspectRatio: kStampAspectRatio,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [for (final s in group.stamps) StampTile(stamp: s)],

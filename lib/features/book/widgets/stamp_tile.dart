@@ -13,10 +13,9 @@ class StampTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.push('/book/${stamp.id}'),
       child: AspectRatio(
-        aspectRatio: 3 / 4,
+        aspectRatio: kStampAspectRatio,
         child: StampFrame(
           notchRadius: 5,
-          paperInset: 6,
           child: Image.memory(stamp.image, fit: BoxFit.cover),
         ),
       ),

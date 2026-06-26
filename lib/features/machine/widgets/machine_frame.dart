@@ -35,12 +35,17 @@ class MachineFrame extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               // Viewfinder / stamp behind the metal, filling the window.
+              // The dark backing shows through the stamp's perforation notches,
+              // reading as the recessed machine slot.
               Positioned(
                 left: w * (_winLeft - _bleed),
                 top: h * (_winTop - _bleed),
                 right: w * (_winRight - _bleed),
                 bottom: h * (_winBottom - _bleed),
-                child: slotChild,
+                child: ColoredBox(
+                  color: const Color(0xFF141414),
+                  child: slotChild,
+                ),
               ),
               // Brushed-metal body on top; its transparent window reveals
               // the slot above.
