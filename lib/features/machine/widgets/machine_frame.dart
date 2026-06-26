@@ -20,8 +20,11 @@ class MachineFrame extends StatelessWidget {
   static const double _winRight = 0.2443;
   static const double _winBottom = 0.2522;
 
-  // Bleed the slot slightly under the metal so no seam shows at the edges.
-  static const double _bleed = 0.006;
+  // The dark backing bleeds under the metal so no seam shows at the window
+  // edge. The slot itself is kept *inside* the opening so bright content (a
+  // live camera) never leaks through the bezel's anti-aliased inner edge.
+  static const double _bleed = 0.012;
+  static const double _slotInset = 0.004;
 
   @override
   Widget build(BuildContext context) {
@@ -34,18 +37,23 @@ class MachineFrame extends StatelessWidget {
           return Stack(
             fit: StackFit.expand,
             children: [
-              // Viewfinder / stamp behind the metal, filling the window.
-              // The dark backing shows through the stamp's perforation notches,
-              // reading as the recessed machine slot.
+              // Dark recess: bleeds under the bezel on every side so the
+              // window edge always reads as the dark machine slot.
               Positioned(
                 left: w * (_winLeft - _bleed),
                 top: h * (_winTop - _bleed),
                 right: w * (_winRight - _bleed),
                 bottom: h * (_winBottom - _bleed),
-                child: ColoredBox(
-                  color: const Color(0xFF141414),
-                  child: slotChild,
-                ),
+                child: const ColoredBox(color: Color(0xFF141414)),
+              ),
+              // Viewfinder / stamp, kept just inside the opening. Its notches
+              // reveal the dark recess behind.
+              Positioned(
+                left: w * (_winLeft + _slotInset),
+                top: h * (_winTop + _slotInset),
+                right: w * (_winRight + _slotInset),
+                bottom: h * (_winBottom + _slotInset),
+                child: slotChild,
               ),
               // Brushed-metal body on top; its transparent window reveals
               // the slot above.

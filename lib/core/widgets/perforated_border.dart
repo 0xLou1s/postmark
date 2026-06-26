@@ -36,11 +36,16 @@ class StampFrame extends StatelessWidget {
 
 /// Centres of the notches along an edge of [length], leaving a flat margin of
 /// at least [r] at each corner so the stamp keeps square (un-bitten) corners.
+/// Notches are spaced [_notchSpacing] diameters apart, so a flat gap of paper
+/// shows between them.
+const double _notchSpacing = 1.5;
+
 List<double> _notchCenters(double length, double r) {
   final margin = r;
   final usable = length - 2 * margin;
-  if (usable <= 2 * r) return [length / 2];
-  final n = (usable / (2 * r)).floor();
+  final pitch = 2 * r * _notchSpacing;
+  if (usable <= pitch) return [length / 2];
+  final n = (usable / pitch).floor();
   final spacing = usable / n;
   return [for (var i = 0; i < n; i++) margin + spacing * (i + 0.5)];
 }
