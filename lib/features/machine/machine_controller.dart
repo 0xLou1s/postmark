@@ -14,7 +14,17 @@ class MachineController extends ChangeNotifier {
 
   double minZoom = 1.0;
   double maxZoom = 1.0;
-  double zoom = 1.0;
+
+  /// Current zoom level. Kept in a [ValueNotifier] so only the zoom badge
+  /// rebuilds on change — pinching must not rebuild the camera preview/overlay.
+  final ValueNotifier<double> zoomNotifier = ValueNotifier(1.0);
+  double get zoom => zoomNotifier.value;
+
+  // Coalesces rapid pinch updates into one in-flight setZoomLevel call so the
+  // platform channel isn't flooded (the source of the stutter).
+  double _targetZoom = 1.0;
+  double _appliedZoom = 1.0;
+  bool _applyingZoom = false;
 
   Future<void> init() async {
     if (controller != null || initializing) return;
@@ -35,7 +45,9 @@ class MachineController extends ChangeNotifier {
       await c.initialize();
       minZoom = await c.getMinZoomLevel();
       maxZoom = await c.getMaxZoomLevel();
-      zoom = minZoom;
+      zoomNotifier.value = minZoom;
+      _targetZoom = minZoom;
+      _appliedZoom = minZoom;
       controller = c;
     } catch (e) {
       error = e.toString();
@@ -45,15 +57,33 @@ class MachineController extends ChangeNotifier {
     }
   }
 
-  /// Sets the camera zoom, clamped to the supported range.
-  Future<void> setZoom(double value) async {
+  /// Sets the camera zoom, clamped to the supported range. Updates the badge
+  /// immediately and applies the level natively without rebuilding the tree;
+  /// rapid pinch updates are coalesced so the platform channel isn't flooded.
+  void setZoom(double value) {
     final c = controller;
     if (c == null || !c.value.isInitialized) return;
     final clamped = value.clamp(minZoom, maxZoom);
-    if (clamped == zoom) return;
-    zoom = clamped;
-    await c.setZoomLevel(clamped);
-    notifyListeners();
+    zoomNotifier.value = clamped;
+    _targetZoom = clamped;
+    _drainZoom();
+  }
+
+  Future<void> _drainZoom() async {
+    if (_applyingZoom) return;
+    final c = controller;
+    if (c == null) return;
+    _applyingZoom = true;
+    try {
+      // Always apply the latest target; skip the intermediate values that
+      // piled up while a previous setZoomLevel was in flight.
+      while ((_targetZoom - _appliedZoom).abs() > 0.001) {
+        _appliedZoom = _targetZoom;
+        await c.setZoomLevel(_appliedZoom);
+      }
+    } finally {
+      _applyingZoom = false;
+    }
   }
 
   /// Captures a frame and returns its JPEG bytes.
@@ -107,6 +137,7 @@ class MachineController extends ChangeNotifier {
 
   @override
   void dispose() {
+    zoomNotifier.dispose();
     controller?.dispose();
     super.dispose();
   }

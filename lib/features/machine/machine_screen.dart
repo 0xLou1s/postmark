@@ -148,11 +148,16 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (m.zoom > m.minZoom)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _ZoomBadge(zoom: m.zoom),
-                    ),
+                  // Only the badge rebuilds while pinching, not the preview.
+                  ValueListenableBuilder<double>(
+                    valueListenable: m.zoomNotifier,
+                    builder: (context, zoom, _) => zoom > m.minZoom
+                        ? Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _ZoomBadge(zoom: zoom),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                   ShutterButton(
                     onPressed: _onShutter,
                     enabled: !_busy,
