@@ -4,7 +4,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/widgets/perforated_border.dart';
@@ -142,12 +141,6 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.collections_bookmark_outlined),
-            onPressed: () => context.push('/book'),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Column(
