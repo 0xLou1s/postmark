@@ -146,17 +146,10 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
         child: Column(
           children: [
             Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: 320,
-                      height: 470,
-                      child: MachineFrame(slotChild: viewfinder),
-                    ),
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: MachineFrame(slotChild: viewfinder),
                 ),
               ),
             ),
