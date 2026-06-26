@@ -99,6 +99,82 @@ Path _stampPath(Size size, double r) {
   return path;
 }
 
+/// A stamp-shaped frame for a live viewfinder: the perforation is *painted*
+/// (in [color]) around the edges, over whatever sits behind it (e.g. the
+/// camera preview), while the stamp interior stays transparent. Unlike
+/// [StampFrame] it clips nothing — it just draws the notched border — so it can
+/// be laid over a full-screen preview. Drawn entirely in code so different
+/// stamp outlines can be swapped in later for other stamp types.
+class StampNotchOverlay extends StatelessWidget {
+  const StampNotchOverlay({
+    super.key,
+    this.notchRadius = 8,
+    this.color = const Color(0xFF141414),
+    this.bleed = EdgeInsets.zero,
+  });
+
+  final double notchRadius;
+  final Color color;
+
+  /// How far the opaque border extends *beyond* the stamp outline on each side.
+  /// The stamp is drawn inset by [bleed]; the extra margin is filled with
+  /// [color] so it can bleed under a frame/bezel and hide any gap if the
+  /// frame's window opening is slightly uneven.
+  final EdgeInsets bleed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _NotchBorderPainter(
+          notchRadius: notchRadius,
+          color: color,
+          bleed: bleed,
+        ),
+      ),
+    );
+  }
+}
+
+class _NotchBorderPainter extends CustomPainter {
+  _NotchBorderPainter({
+    required this.notchRadius,
+    required this.color,
+    required this.bleed,
+  });
+  final double notchRadius;
+  final Color color;
+  final EdgeInsets bleed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final outer = Path()..addRect(Offset.zero & size);
+    // Stamp outline, inset by [bleed] so the surrounding margin stays opaque.
+    final stampSize = Size(
+      size.width - bleed.horizontal,
+      size.height - bleed.vertical,
+    );
+    final stamp =
+        _stampPath(stampSize, notchRadius).shift(Offset(bleed.left, bleed.top));
+    // Fill everything outside the stamp outline (bleed margin + the scalloped
+    // notches); the stamp interior stays clear so the preview reads through.
+    final border = Path.combine(PathOperation.difference, outer, stamp);
+    canvas.drawPath(
+      border,
+      Paint()
+        ..color = color
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_NotchBorderPainter old) =>
+      old.notchRadius != notchRadius ||
+      old.color != color ||
+      old.bleed != bleed;
+}
+
 class _StampClipper extends CustomClipper<Path> {
   _StampClipper({required this.notchRadius});
   final double notchRadius;
