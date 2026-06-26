@@ -109,6 +109,10 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     await ref.read(machineControllerProvider).switchCamera();
   }
 
+  Future<void> _onToggleFlash() async {
+    await ref.read(machineControllerProvider).cycleFlash();
+  }
+
   @override
   Widget build(BuildContext context) {
     // iOS / Android with a live camera: full-screen viewfinder.
@@ -189,42 +193,67 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
               ),
             ),
           ),
-          // Zoom badge + shutter, kept clear of the bottom safe area.
+          // Top bar: flash (left) + live zoom readout (right). The middle
+          // spacer matches the shutter so these line up with the bottom row.
+          Positioned.fill(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                    top: 8, left: _kRowPadX, right: _kRowPadX),
+                child: Row(
+                  // Pin to the top edge; without this the Row centres itself in
+                  // the full-height Positioned.fill.
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _CameraControl.icon(
+                      icon: _flashIcon(m.flashMode),
+                      onPressed: (_busy || m.switching) ? null : _onToggleFlash,
+                      tooltip: 'Flash',
+                    ),
+                    const SizedBox(width: 76),
+                    // Only the badge rebuilds while pinching, not the preview.
+                    ValueListenableBuilder<double>(
+                      valueListenable: m.zoomNotifier,
+                      builder: (context, zoom, _) =>
+                          _CameraControl.label('${zoom.toStringAsFixed(1)}×'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Shutter row, kept clear of the bottom safe area.
           Positioned.fill(
             child: SafeArea(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Only the badge rebuilds while pinching, not the preview.
-                  ValueListenableBuilder<double>(
-                    valueListenable: m.zoomNotifier,
-                    builder: (context, zoom, _) => zoom > m.minZoom
-                        ? Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _ZoomBadge(zoom: zoom),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _CircleControl(
-                        icon: Icons.photo_library_outlined,
-                        onPressed: _busy ? null : _onPickPressed,
-                        tooltip: 'Pick from gallery',
-                      ),
-                      ShutterButton(
-                        onPressed: _onShutter,
-                        enabled: !_busy && !m.switching,
-                      ),
-                      _CircleControl(
-                        icon: Icons.cameraswitch_outlined,
-                        onPressed: (_busy || m.switching || !m.canSwitchCamera)
-                            ? null
-                            : _onFlipCamera,
-                        tooltip: 'Switch camera',
-                      ),
-                    ],
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: _kRowPadX),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _CameraControl.icon(
+                          icon: Icons.photo_library_outlined,
+                          onPressed: _busy ? null : _onPickPressed,
+                          tooltip: 'Pick from gallery',
+                        ),
+                        ShutterButton(
+                          onPressed: _onShutter,
+                          enabled: !_busy && !m.switching,
+                        ),
+                        _CameraControl.icon(
+                          icon: Icons.cameraswitch_outlined,
+                          onPressed:
+                              (_busy || m.switching || !m.canSwitchCamera)
+                                  ? null
+                                  : _onFlipCamera,
+                          tooltip: 'Switch camera',
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -293,67 +322,104 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
   }
 }
 
-/// Round translucent control flanking the shutter (gallery / camera flip).
-/// Dims to 40% when [onPressed] is null.
-class _CircleControl extends StatelessWidget {
-  const _CircleControl({
-    required this.icon,
-    required this.onPressed,
-    required this.tooltip,
-  });
-
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: Opacity(
-          opacity: enabled ? 1 : 0.4,
-          child: Container(
-            width: 52,
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.4),
-              border: Border.all(color: Colors.white24, width: 1),
-            ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-        ),
-      ),
-    );
+/// Icon reflecting the current flash mode.
+IconData _flashIcon(FlashMode mode) {
+  switch (mode) {
+    case FlashMode.always:
+    case FlashMode.torch:
+      return Icons.flash_on;
+    case FlashMode.auto:
+      return Icons.flash_auto;
+    case FlashMode.off:
+      return Icons.flash_off;
   }
 }
 
-/// Small pill showing the current camera zoom, e.g. "1.8×".
-class _ZoomBadge extends StatelessWidget {
-  const _ZoomBadge({required this.zoom});
-  final double zoom;
+/// Diameter shared by every round on-screen control (flash, zoom, gallery,
+/// flip) so the top and bottom rows line up.
+const double _kControlSize = 46;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
+/// Horizontal inset of the top/bottom control rows, shared so flash lines up
+/// over the gallery button and zoom over the flip button.
+const double _kRowPadX = 24;
+
+BoxDecoration _controlDecoration() => BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.black.withValues(alpha: 0.4),
+      border: Border.all(color: Colors.white24, width: 1),
+    );
+
+/// A single round, translucent camera control with two variants — similar to a
+/// React component that takes a `variant` prop, expressed here with named
+/// constructors:
+///   • [_CameraControl.icon]  — a tappable icon button (flash / gallery / flip).
+///                              Pass a null `onPressed` to render it disabled.
+///   • [_CameraControl.label] — a non-interactive text readout (zoom).
+class _CameraControl extends StatelessWidget {
+  const _CameraControl._({
+    required this.child,
+    required this.interactive,
+    this.onPressed,
+    this.tooltip,
+  });
+
+  /// Tappable icon button. `onPressed == null` shows it dimmed/disabled.
+  factory _CameraControl.icon({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    String? tooltip,
+  }) {
+    return _CameraControl._(
+      interactive: true,
+      onPressed: onPressed,
+      tooltip: tooltip,
+      child: Icon(icon, color: Colors.white, size: 22),
+    );
+  }
+
+  /// Static text readout, e.g. the current zoom "1.8×".
+  factory _CameraControl.label(String text) {
+    return _CameraControl._(
+      interactive: false,
       child: Text(
-        '${zoom.toStringAsFixed(1)}×',
+        text,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
       ),
     );
+  }
+
+  final Widget child;
+  final bool interactive;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = interactive && onPressed == null;
+    Widget control = Opacity(
+      opacity: disabled ? 0.4 : 1,
+      child: Container(
+        width: _kControlSize,
+        height: _kControlSize,
+        alignment: Alignment.center,
+        decoration: _controlDecoration(),
+        child: child,
+      ),
+    );
+
+    if (!interactive) return control;
+
+    control = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onPressed,
+      child: control,
+    );
+    return tooltip == null
+        ? control
+        : Tooltip(message: tooltip!, child: control);
   }
 }

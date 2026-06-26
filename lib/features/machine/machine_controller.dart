@@ -27,6 +27,10 @@ class MachineController extends ChangeNotifier {
   CameraLensDirection get lensDirection => _lensDirection;
   bool switching = false;
 
+  /// Flash mode applied to captures. Defaults to off so the front camera no
+  /// longer fires automatically; cycled off → auto → always by the user.
+  FlashMode flashMode = FlashMode.off;
+
   /// Current zoom level. Kept in a [ValueNotifier] so only the zoom badge
   /// rebuilds on change — pinching must not rebuild the camera preview/overlay.
   final ValueNotifier<double> zoomNotifier = ValueNotifier(1.0);
@@ -75,7 +79,25 @@ class MachineController extends ChangeNotifier {
     _targetZoom = minZoom;
     _appliedZoom = minZoom;
     _lensDirection = description.lensDirection;
+    // Flash mode is per-controller, so re-apply it after (re)opening a lens.
+    // Some lenses (e.g. most front cameras) have no flash — ignore failures.
+    try {
+      await c.setFlashMode(flashMode);
+    } catch (_) {}
     controller = c;
+  }
+
+  /// Cycles the flash through off → auto → always and applies it natively.
+  Future<void> cycleFlash() async {
+    const order = [FlashMode.off, FlashMode.auto, FlashMode.always];
+    flashMode = order[(order.indexOf(flashMode) + 1) % order.length];
+    final c = controller;
+    if (c != null && c.value.isInitialized) {
+      try {
+        await c.setFlashMode(flashMode);
+      } catch (_) {}
+    }
+    notifyListeners();
   }
 
   /// Toggles between the front and back lens. No-op while a switch is already
