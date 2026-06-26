@@ -14,21 +14,11 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 12, top: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              PostmarkNav(
-                currentIndex: navigationShell.currentIndex,
-                onTap: (i) => navigationShell.goBranch(
-                  i,
-                  initialLocation: i == navigationShell.currentIndex,
-                ),
-              ),
-            ],
-          ),
+      bottomNavigationBar: PostmarkNav(
+        currentIndex: navigationShell.currentIndex,
+        onTap: (i) => navigationShell.goBranch(
+          i,
+          initialLocation: i == navigationShell.currentIndex,
         ),
       ),
     );

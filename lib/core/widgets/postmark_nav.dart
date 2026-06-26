@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 
-/// A pill-shaped segmented navigation bar with two destinations.
+/// A seamless bottom navigation bar that anchors to the very bottom of the
+/// screen (filling the home-indicator gap) with two destinations.
 ///
-/// Mirrors the brushed-paper aesthetic: a soft grey track with a single
-/// raised "thumb" highlighting the active destination.
+/// Mirrors the brushed-paper aesthetic: a warm paper surface with a thin
+/// hairline on top and a single raised "thumb" that glides between the
+/// active destination.
 class PostmarkNav extends StatelessWidget {
   const PostmarkNav({
     super.key,
@@ -18,43 +20,102 @@ class PostmarkNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
+  static const _items = <_NavItem>[
+    _NavItem(label: 'Stamp'),
+    _NavItem(label: 'Book'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
     return Container(
-      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEDEAE3),
-        borderRadius: BorderRadius.circular(28),
+        color: PostmarkColors.paper,
+        border: const Border(
+          top: BorderSide(color: PostmarkColors.metalLight, width: 1),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _NavSegment(
-            label: 'Stamp',
-            selected: currentIndex == 0,
-            onTap: () => onTap(0),
-            iconBuilder: (color) => CustomPaint(
-              size: const Size(24, 24),
-              painter: _SealPainter(color: color),
+      // Reserve the home-indicator area as part of the bar (no white gap),
+      // while keeping the touch targets above it.
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 10,
+        bottom: 10 + bottomInset,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / _items.length;
+
+          return SizedBox(
+            height: 56,
+            child: Stack(
+              children: [
+                // The gliding raised thumb behind the active segment.
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment(
+                    _items.length == 1
+                        ? 0
+                        : (currentIndex * 2 / (_items.length - 1)) - 1,
+                    0,
+                  ),
+                  child: Container(
+                    width: segmentWidth - 12,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: PostmarkColors.metalLight.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    for (var i = 0; i < _items.length; i++)
+                      Expanded(
+                        child: _NavSegment(
+                          label: _items[i].label,
+                          selected: currentIndex == i,
+                          onTap: () => onTap(i),
+                          iconBuilder: i == 0
+                              ? (color) => CustomPaint(
+                                    size: const Size(24, 24),
+                                    painter: _SealPainter(color: color),
+                                  )
+                              : (color) =>
+                                  Icon(Icons.book, color: color, size: 24),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
-          ),
-          _NavSegment(
-            label: 'Book',
-            selected: currentIndex == 1,
-            onTap: () => onTap(1),
-            iconBuilder: (color) => Icon(Icons.book, color: color, size: 24),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
+}
+
+class _NavItem {
+  const _NavItem({required this.label});
+  final String label;
 }
 
 class _NavSegment extends StatelessWidget {
@@ -76,36 +137,28 @@ class _NavSegment extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        width: 96,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? PostmarkColors.paper : Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            iconBuilder(color),
+            // Active icon lifts and grows just a touch.
+            AnimatedScale(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOut,
+              scale: selected ? 1.08 : 1.0,
+              child: iconBuilder(color),
+            ),
             const SizedBox(height: 4),
-            Text(
-              label,
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
               style: TextStyle(
                 color: color,
                 fontSize: 13,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                letterSpacing: selected ? 0.2 : 0,
               ),
+              child: Text(label),
             ),
           ],
         ),

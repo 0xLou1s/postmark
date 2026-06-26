@@ -15,6 +15,18 @@ class MachineController extends ChangeNotifier {
   double minZoom = 1.0;
   double maxZoom = 1.0;
 
+  /// All cameras reported by the platform, plus which lens we're showing now.
+  List<CameraDescription> _cameras = const [];
+  CameraLensDirection _lensDirection = CameraLensDirection.back;
+
+  /// Whether the flip button should be tappable. True when there are multiple
+  /// cameras, or when the list isn't loaded yet (e.g. the controller survived a
+  /// hot reload) — in that case [switchCamera] loads it lazily and no-ops if it
+  /// turns out there's only one.
+  bool get canSwitchCamera => _cameras.isEmpty || _cameras.length > 1;
+  CameraLensDirection get lensDirection => _lensDirection;
+  bool switching = false;
+
   /// Current zoom level. Kept in a [ValueNotifier] so only the zoom badge
   /// rebuilds on change — pinching must not rebuild the camera preview/overlay.
   final ValueNotifier<double> zoomNotifier = ValueNotifier(1.0);
@@ -31,28 +43,67 @@ class MachineController extends ChangeNotifier {
     initializing = true;
     notifyListeners();
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      _cameras = await availableCameras();
+      if (_cameras.isEmpty) {
         error = 'No camera found on this device.';
         return;
       }
-      final back = cameras.firstWhere(
+      final back = _cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
+        orElse: () => _cameras.first,
       );
-      final c = CameraController(back, ResolutionPreset.high,
-          enableAudio: false);
-      await c.initialize();
-      minZoom = await c.getMinZoomLevel();
-      maxZoom = await c.getMaxZoomLevel();
-      zoomNotifier.value = minZoom;
-      _targetZoom = minZoom;
-      _appliedZoom = minZoom;
-      controller = c;
+      await _open(back);
     } catch (e) {
       error = e.toString();
     } finally {
       initializing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Disposes any current controller and opens [description], refreshing the
+  /// zoom range. Assumes the caller handles error/notify around it.
+  Future<void> _open(CameraDescription description) async {
+    await controller?.dispose();
+    controller = null;
+    final c = CameraController(description, ResolutionPreset.high,
+        enableAudio: false);
+    await c.initialize();
+    minZoom = await c.getMinZoomLevel();
+    maxZoom = await c.getMaxZoomLevel();
+    zoomNotifier.value = minZoom;
+    _targetZoom = minZoom;
+    _appliedZoom = minZoom;
+    _lensDirection = description.lensDirection;
+    controller = c;
+  }
+
+  /// Toggles between the front and back lens. No-op while a switch is already
+  /// in flight or when there's only one camera.
+  Future<void> switchCamera() async {
+    if (switching) return;
+    switching = true;
+    notifyListeners();
+    try {
+      // The list may be empty if the controller survived a hot reload; load it
+      // on demand so the flip button keeps working without a full restart.
+      if (_cameras.isEmpty) _cameras = await availableCameras();
+      if (_cameras.length < 2) return;
+      final target = _lensDirection == CameraLensDirection.back
+          ? CameraLensDirection.front
+          : CameraLensDirection.back;
+      final next = _cameras.firstWhere(
+        (c) => c.lensDirection == target,
+        orElse: () => _cameras.firstWhere(
+          (c) => c.lensDirection != _lensDirection,
+          orElse: () => _cameras.first,
+        ),
+      );
+      await _open(next);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      switching = false;
       notifyListeners();
     }
   }
@@ -86,12 +137,19 @@ class MachineController extends ChangeNotifier {
     }
   }
 
-  /// Captures a frame and returns its JPEG bytes.
+  /// Whether the active lens is the front (selfie) camera, whose preview is
+  /// mirrored — captures must be flipped back to match what the user saw.
+  bool get _isFront => _lensDirection == CameraLensDirection.front;
+
+  /// Captures a frame and returns its JPEG bytes. Front-camera shots are
+  /// un-mirrored so the result matches the preview.
   Future<Uint8List?> capture() async {
     final c = controller;
     if (c == null || !c.value.isInitialized) return null;
     final file = await c.takePicture();
-    return file.readAsBytes();
+    final bytes = await file.readAsBytes();
+    if (!_isFront) return bytes;
+    return compute(_cropJpeg, _CropRequest(bytes, 0, 0, 1, 1, flipH: true));
   }
 
   /// Captures a full-resolution photo and crops it to exactly the part of the
@@ -131,8 +189,13 @@ class MachineController extends ChangeNotifier {
     final v1 = ((windowRect.bottom - offY) / dispH).clamp(0.0, 1.0);
     if (u1 <= u0 || v1 <= v0) return bytes;
 
-    // Decode + crop off the UI isolate — full-res JPEGs are heavy.
-    return compute(_cropJpeg, _CropRequest(bytes, u0, v0, u1, v1));
+    // Decode + crop off the UI isolate — full-res JPEGs are heavy. Front-camera
+    // shots are flipped so the crop (measured on the mirrored preview) lines up
+    // and the result matches what the user saw.
+    return compute(
+      _cropJpeg,
+      _CropRequest(bytes, u0, v0, u1, v1, flipH: _isFront),
+    );
   }
 
   @override
@@ -145,9 +208,19 @@ class MachineController extends ChangeNotifier {
 
 /// Crop parameters as fractions [0,1] of the (orientation-baked) image.
 class _CropRequest {
-  const _CropRequest(this.bytes, this.u0, this.v0, this.u1, this.v1);
+  const _CropRequest(
+    this.bytes,
+    this.u0,
+    this.v0,
+    this.u1,
+    this.v1, {
+    this.flipH = false,
+  });
   final Uint8List bytes;
   final double u0, v0, u1, v1;
+
+  /// Mirror horizontally before cropping (front-camera un-mirroring).
+  final bool flipH;
 }
 
 /// Runs on a background isolate via [compute]: decode, normalise orientation,
@@ -156,7 +229,10 @@ class _CropRequest {
 Uint8List _cropJpeg(_CropRequest r) {
   final decoded = img.decodeImage(r.bytes);
   if (decoded == null) return r.bytes;
-  final baked = img.bakeOrientation(decoded);
+  var baked = img.bakeOrientation(decoded);
+  // Mirror first so screen-space crop fractions (from the mirrored preview)
+  // map onto the same pixels and the result matches what the user saw.
+  if (r.flipH) baked = img.flipHorizontal(baked);
 
   final x = (r.u0 * baked.width).round();
   final y = (r.v0 * baked.height).round();

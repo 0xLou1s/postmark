@@ -51,16 +51,7 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
 
     if (_usePicker || hasError) {
       // macOS / desktop / no-camera (simulator): pick from gallery
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery);
-      if (!mounted) return;
-      setState(() => _busy = false);
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PrintingScreen(image: bytes)),
-      );
+      await _pickFromGallery();
     } else {
       // iOS / Android: live full-screen capture, cropped to the bezel window.
       final stackBox =
@@ -90,12 +81,46 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     }
   }
 
+  /// Tapped the gallery button directly (mobile live camera): pick a photo
+  /// instead of capturing one.
+  Future<void> _onPickPressed() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await _pickFromGallery();
+  }
+
+  /// Opens the system gallery and routes the chosen image into printing.
+  /// Assumes [_busy] is already set by the caller; clears it when done.
+  Future<void> _pickFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PrintingScreen(image: bytes)),
+    );
+  }
+
+  Future<void> _onFlipCamera() async {
+    if (_busy) return;
+    await ref.read(machineControllerProvider).switchCamera();
+  }
+
   @override
   Widget build(BuildContext context) {
     // iOS / Android with a live camera: full-screen viewfinder.
     if (!_usePicker) {
       final m = ref.watch(machineControllerProvider);
       final cam = m.controller;
+      // While flipping lenses the old controller is disposed before the new one
+      // is ready — keep the bezel + controls, but show black/loading in place of
+      // the preview so we never render CameraPreview against a disposed camera.
+      if (m.switching) {
+        return _buildLiveCamera(m, cam, switching: true);
+      }
       if (m.error == null && cam != null && cam.value.isInitialized) {
         return _buildLiveCamera(m, cam);
       }
@@ -105,30 +130,52 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
 
   /// Full-screen live preview with the machine bezel overlaid; the photo is
   /// cropped to the bezel window on capture.
-  Widget _buildLiveCamera(MachineController m, CameraController cam) {
+  Widget _buildLiveCamera(
+    MachineController m,
+    CameraController? cam, {
+    bool switching = false,
+  }) {
+    final showPreview =
+        !switching && cam != null && cam.value.isInitialized;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         key: _stackKey,
         fit: StackFit.expand,
         children: [
-          // Full-screen camera preview, filling the screen edge-to-edge.
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: cam.value.previewSize!.height,
-              height: cam.value.previewSize!.width,
-              child: CameraPreview(cam),
+          // Full-screen camera preview, filling the screen edge-to-edge. While
+          // flipping lenses, show black + a spinner here instead.
+          if (showPreview)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: cam.value.previewSize!.height,
+                height: cam.value.previewSize!.width,
+                child: CameraPreview(cam),
+              ),
+            )
+          else
+            const ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
             ),
-          ),
-          // Pinch-to-zoom over the whole screen (the bezel ignores pointers).
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onScaleStart: (_) =>
-                _baseZoom = ref.read(machineControllerProvider).zoom,
-            onScaleUpdate: (d) => ref
-                .read(machineControllerProvider)
-                .setZoom(_baseZoom * d.scale),
+          // Pinch-to-zoom over the viewfinder. Stops short of the bottom so its
+          // scale recognizer can't steal taps meant for the control buttons.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 160,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onScaleStart: (_) =>
+                  _baseZoom = ref.read(machineControllerProvider).zoom,
+              onScaleUpdate: (d) => ref
+                  .read(machineControllerProvider)
+                  .setZoom(_baseZoom * d.scale),
+            ),
           ),
           // Machine bezel, centred; its transparent window marks the crop area.
           Padding(
@@ -158,9 +205,26 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
                           )
                         : const SizedBox.shrink(),
                   ),
-                  ShutterButton(
-                    onPressed: _onShutter,
-                    enabled: !_busy,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _CircleControl(
+                        icon: Icons.photo_library_outlined,
+                        onPressed: _busy ? null : _onPickPressed,
+                        tooltip: 'Pick from gallery',
+                      ),
+                      ShutterButton(
+                        onPressed: _onShutter,
+                        enabled: !_busy && !m.switching,
+                      ),
+                      _CircleControl(
+                        icon: Icons.cameraswitch_outlined,
+                        onPressed: (_busy || m.switching || !m.canSwitchCamera)
+                            ? null
+                            : _onFlipCamera,
+                        tooltip: 'Switch camera',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -223,6 +287,46 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
             ),
             const SizedBox(height: 32),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Round translucent control flanking the shutter (gallery / camera flip).
+/// Dims to 40% when [onPressed] is null.
+class _CircleControl extends StatelessWidget {
+  const _CircleControl({
+    required this.icon,
+    required this.onPressed,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.4,
+          child: Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.4),
+              border: Border.all(color: Colors.white24, width: 1),
+            ),
+            child: Icon(icon, color: Colors.white, size: 24),
+          ),
         ),
       ),
     );
