@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/widgets/perforated_border.dart';
 import '../../data/in_memory_stamp_repository.dart';
+import '../../domain/stamp.dart';
 
 class StampDetailScreen extends ConsumerWidget {
   const StampDetailScreen({super.key, required this.stampId});
@@ -34,7 +35,7 @@ class StampDetailScreen extends ConsumerWidget {
                     Expanded(
                       child: Center(
                         child: AspectRatio(
-                          aspectRatio: 3 / 4,
+                          aspectRatio: kStampAspectRatio,
                           child: StampFrame(
                             child:
                                 Image.memory(stamp.image, fit: BoxFit.cover),

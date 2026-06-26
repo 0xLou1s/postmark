@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/perforated_border.dart';
 import '../../data/in_memory_stamp_repository.dart';
+import '../../domain/stamp.dart';
 
 class PreviewScreen extends ConsumerStatefulWidget {
   const PreviewScreen({super.key, required this.image});
@@ -46,9 +47,11 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
               Center(
                 child: SizedBox(
                   width: 240,
-                  height: 320,
-                  child: StampFrame(
-                    child: Image.memory(widget.image, fit: BoxFit.cover),
+                  child: AspectRatio(
+                    aspectRatio: kStampAspectRatio,
+                    child: StampFrame(
+                      child: Image.memory(widget.image, fit: BoxFit.cover),
+                    ),
                   ),
                 ),
               ),
