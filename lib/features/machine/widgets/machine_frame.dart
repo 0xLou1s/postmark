@@ -84,6 +84,77 @@ class MachineFrame extends StatelessWidget {
   }
 }
 
+/// The "just printed" moment: the cut-out stamp is pushed up out of the slot
+/// toward the upper-left (≈9 o'clock) and tilts as it clears the bezel, while
+/// the window it left behind reads as an empty black die-cut.
+///
+/// [progress] runs 0→1; at 0 the [stamp] sits exactly in the window, at 1 it
+/// has ejected clear of the metal.
+class MachineEjectFrame extends StatelessWidget {
+  const MachineEjectFrame({
+    super.key,
+    required this.stamp,
+    required this.progress,
+  });
+
+  final Widget stamp;
+  final double progress;
+
+  static const double _frameAspect = MachineFrame._frameAspect;
+  static const double _winLeft = MachineFrame._winLeft;
+  static const double _winTop = MachineFrame._winTop;
+  static const double _winRight = MachineFrame._winRight;
+  static const double _winBottom = MachineFrame._winBottom;
+  static const double _bleed = MachineFrame._bleed;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = Curves.easeOutBack.transform(progress.clamp(0.0, 1.0));
+    return AspectRatio(
+      aspectRatio: _frameAspect,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          // Eject vector: lifts up and drifts left (≈9 o'clock) with a clear
+          // tilt — not too high so it stays overlapping the bezel.
+          final dx = -e * w * 0.14;
+          final dy = -e * h * 0.34;
+          final angle = -e * 0.20;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Empty black die where the stamp was cut out.
+              Positioned(
+                left: w * (_winLeft - _bleed),
+                top: h * (_winTop - _bleed),
+                right: w * (_winRight - _bleed),
+                bottom: h * (_winBottom - _bleed),
+                child: const ColoredBox(color: Colors.black),
+              ),
+              // Brushed-metal body; the stamp rides over it as it ejects.
+              IgnorePointer(
+                child: Image.asset('assets/machine/frame.png', fit: BoxFit.fill),
+              ),
+              // The cut-out stamp, seated in the window then pushed clear.
+              Positioned(
+                left: w * (_winLeft - _bleed),
+                top: h * (_winTop - _bleed),
+                right: w * (_winRight - _bleed),
+                bottom: h * (_winBottom - _bleed),
+                child: Transform.translate(
+                  offset: Offset(dx, dy),
+                  child: Transform.rotate(angle: angle, child: stamp),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// The machine body as a transparent overlay for a full-screen camera.
 ///
 /// Unlike [MachineFrame], nothing is rendered behind the window: the metal

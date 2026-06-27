@@ -10,12 +10,28 @@ import '../../core/widgets/perforated_border.dart';
 import 'machine_controller.dart';
 import 'widgets/machine_frame.dart';
 import 'widgets/shutter_button.dart';
-import '../printing/printing_screen.dart';
+import '../preview/preview_screen.dart';
 
 // macOS/desktop: camera_avfoundation is iOS-only — use image_picker instead.
 // Also falls back to picker when camera reports no-camera error (e.g. simulator).
 bool get _usePicker =>
     !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+/// Insets around the machine. The horizontal padding shrinks the body (the
+/// AspectRatio is width-limited) so it reads as a smaller device; the bottom
+/// padding keeps it clear of the shutter row. Shared by the live frame and the
+/// eject overlay so they sit in exactly the same place.
+const EdgeInsets _kMachineInsets = EdgeInsets.fromLTRB(46, 32, 46, 132);
+
+/// How far the machine shrinks while the shutter "presses" it down.
+const double _kPressScale = 0.92;
+
+/// Timings for the capture sequence — deliberate but a touch snappier.
+const Duration _kPressAnim = Duration(milliseconds: 440); // scale down/up
+const Duration _kPressDown = Duration(milliseconds: 440); // hold while pressed
+const Duration _kSpringBack = Duration(
+  milliseconds: 340,
+); // settle before eject
 
 class MachineScreen extends ConsumerStatefulWidget {
   const MachineScreen({super.key});
@@ -23,9 +39,15 @@ class MachineScreen extends ConsumerStatefulWidget {
   ConsumerState<MachineScreen> createState() => _MachineScreenState();
 }
 
-class _MachineScreenState extends ConsumerState<MachineScreen> {
+class _MachineScreenState extends ConsumerState<MachineScreen>
+    with SingleTickerProviderStateMixin {
   bool _busy = false;
+  bool _shutterPressed = false; // press the machine frame down while held
   double _baseZoom = 1.0; // camera zoom at the start of a pinch gesture
+
+  // Drives the freshly-stamped photo ejecting up out of the machine slot.
+  late final AnimationController _ejectC;
+  Uint8List? _ejectImage;
 
   // Keys for the full-screen layout: the stack defines screen-space, the
   // window marks the bezel opening we crop the captured photo to.
@@ -35,6 +57,10 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
   @override
   void initState() {
     super.initState();
+    _ejectC = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1700),
+    );
     if (!_usePicker) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => ref.read(machineControllerProvider).init(),
@@ -42,43 +68,82 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _ejectC.dispose();
+    super.dispose();
+  }
+
   Future<void> _onShutter() async {
     if (_busy) return;
     setState(() => _busy = true);
 
-    final hasError = !_usePicker &&
-        ref.read(machineControllerProvider).error != null;
+    final hasError =
+        !_usePicker && ref.read(machineControllerProvider).error != null;
 
     if (_usePicker || hasError) {
       // macOS / desktop / no-camera (simulator): pick from gallery
       await _pickFromGallery();
     } else {
       // iOS / Android: live full-screen capture, cropped to the bezel window.
+      // Measure the window at rest (scale 1) BEFORE pressing — the press is a
+      // visual scale only and must not skew the crop region.
       final stackBox =
           _stackKey.currentContext?.findRenderObject() as RenderBox?;
       final windowBox =
           _windowKey.currentContext?.findRenderObject() as RenderBox?;
-
-      Uint8List? bytes;
+      Rect? windowRect;
+      Size? screenSize;
       if (stackBox != null && windowBox != null) {
         final origin = stackBox.localToGlobal(Offset.zero);
-        final windowRect =
+        windowRect =
             (windowBox.localToGlobal(Offset.zero) - origin) & windowBox.size;
-        bytes = await ref.read(machineControllerProvider).captureCropped(
-              windowRect: windowRect,
-              screenSize: stackBox.size,
-            );
-      } else {
-        bytes = await ref.read(machineControllerProvider).capture();
+        screenSize = stackBox.size;
       }
 
+      // 1) Press the machine down — a slow, deliberate "stamping" step.
+      setState(() => _shutterPressed = true);
+      await Future.delayed(_kPressDown);
       if (!mounted) return;
-      setState(() => _busy = false);
-      if (bytes == null) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PrintingScreen(image: bytes!)),
-      );
+
+      // 2) Capture while pressed (using the at-rest window geometry).
+      final m = ref.read(machineControllerProvider);
+      final bytes = (windowRect != null && screenSize != null)
+          ? await m.captureCropped(
+              windowRect: windowRect,
+              screenSize: screenSize,
+            )
+          : await m.capture();
+      if (!mounted) return;
+
+      // 3) Release; let it spring back before the stamp ejects.
+      setState(() => _shutterPressed = false);
+      if (bytes == null) {
+        setState(() => _busy = false);
+        return;
+      }
+      await Future.delayed(_kSpringBack);
+      if (!mounted) return;
+      await _printAndDescribe(bytes);
     }
+  }
+
+  /// Ejects the freshly-stamped photo up out of the slot, then opens the
+  /// description screen directly (no separate printing screen). Keeps [_busy]
+  /// set throughout; clears it when the user returns.
+  Future<void> _printAndDescribe(Uint8List bytes) async {
+    setState(() => _ejectImage = bytes);
+    await _ejectC.forward(from: 0);
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => PreviewScreen(image: bytes)));
+    if (!mounted) return;
+    setState(() {
+      _ejectImage = null;
+      _busy = false;
+    });
+    _ejectC.reset();
   }
 
   /// Tapped the gallery button directly (mobile live camera): pick a photo
@@ -95,13 +160,13 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (!mounted) return;
-    setState(() => _busy = false);
-    if (picked == null) return;
+    if (picked == null) {
+      setState(() => _busy = false);
+      return;
+    }
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PrintingScreen(image: bytes)),
-    );
+    await _printAndDescribe(bytes);
   }
 
   Future<void> _onFlipCamera() async {
@@ -115,6 +180,17 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildContent(),
+        // The freshly-stamped photo ejecting out of the slot, over everything.
+        if (_ejectImage != null) _buildEjectOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
     // iOS / Android with a live camera: full-screen viewfinder.
     if (!_usePicker) {
       final m = ref.watch(machineControllerProvider);
@@ -132,6 +208,34 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     return _buildFallback();
   }
 
+  /// The cut-out stamp ejecting up out of the slot over the bezel, with the
+  /// window left black. Anchored to the same spot as the live frame so it
+  /// reads as the same machine. Parent routes on when [_ejectC] completes.
+  Widget _buildEjectOverlay() {
+    return Positioned.fill(
+      child: AnimatedBuilder(
+        animation: _ejectC,
+        builder: (context, _) {
+          final t = _ejectC.value.clamp(0.0, 1.0);
+          return ColoredBox(
+            color: Colors.black.withValues(alpha: 0.35 * t),
+            child: Padding(
+              padding: _kMachineInsets,
+              child: Center(
+                child: MachineEjectFrame(
+                  progress: t,
+                  stamp: StampFrame(
+                    child: Image.memory(_ejectImage!, fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// Full-screen live preview with the machine bezel overlaid; the photo is
   /// cropped to the bezel window on capture.
   Widget _buildLiveCamera(
@@ -139,8 +243,7 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
     CameraController? cam, {
     bool switching = false,
   }) {
-    final showPreview =
-        !switching && cam != null && cam.value.isInitialized;
+    final showPreview = !switching && cam != null && cam.value.isInitialized;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -182,14 +285,20 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
             ),
           ),
           // Machine bezel, centred; its transparent window marks the crop area.
+          // Presses down a touch while the shutter is held.
           Padding(
-            padding: const EdgeInsets.only(top: 32, bottom: 132),
+            padding: _kMachineInsets,
             child: Center(
-              child: MachineOverlayFrame(
-                windowKey: _windowKey,
-                // Stamp perforation drawn in code over the live preview; its
-                // dark border bleeds under the bezel to hide any rim gap.
-                windowBuilder: (bleed) => StampNotchOverlay(bleed: bleed),
+              child: AnimatedScale(
+                scale: _shutterPressed ? _kPressScale : 1,
+                duration: _kPressAnim,
+                curve: Curves.easeOutCubic,
+                child: MachineOverlayFrame(
+                  windowKey: _windowKey,
+                  // Stamp perforation drawn in code over the live preview; its
+                  // dark border bleeds under the bezel to hide any rim gap.
+                  windowBuilder: (bleed) => StampNotchOverlay(bleed: bleed),
+                ),
               ),
             ),
           ),
@@ -199,7 +308,10 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.only(
-                    top: 8, left: _kRowPadX, right: _kRowPadX),
+                  top: 8,
+                  left: _kRowPadX,
+                  right: _kRowPadX,
+                ),
                 child: Row(
                   // Pin to the top edge; without this the Row centres itself in
                   // the full-height Positioned.fill.
@@ -230,8 +342,7 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: _kRowPadX),
+                    padding: const EdgeInsets.symmetric(horizontal: _kRowPadX),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -243,13 +354,15 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
                         ShutterButton(
                           onPressed: _onShutter,
                           enabled: !_busy && !m.switching,
+                          onPressedChanged: (p) =>
+                              setState(() => _shutterPressed = p),
                         ),
                         _CameraControl.icon(
                           icon: Icons.cameraswitch_outlined,
                           onPressed:
                               (_busy || m.switching || !m.canSwitchCamera)
-                                  ? null
-                                  : _onFlipCamera,
+                              ? null
+                              : _onFlipCamera,
                           tooltip: 'Switch camera',
                         ),
                       ],
@@ -269,7 +382,8 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
   Widget _buildFallback() {
     final mState = _usePicker ? null : ref.watch(machineControllerProvider);
     final cam = mState?.controller;
-    final cameraReady = _usePicker ||
+    final cameraReady =
+        _usePicker ||
         mState?.error != null ||
         (cam != null && cam.value.isInitialized);
 
@@ -281,12 +395,17 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_photo_alternate_outlined,
-                        color: Colors.white38, size: 48),
+                    Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: Colors.white38,
+                      size: 48,
+                    ),
                     SizedBox(height: 12),
-                    Text('Press shutter\nto pick a photo',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38, fontSize: 13)),
+                    Text(
+                      'Press shutter\nto pick a photo',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38, fontSize: 13),
+                    ),
                   ],
                 ),
               ),
@@ -295,19 +414,14 @@ class _MachineScreenState extends ConsumerState<MachineScreen> {
         : const Center(child: CircularProgressIndicator());
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: MachineFrame(slotChild: viewfinder),
-                ),
+                child: Center(child: MachineFrame(slotChild: viewfinder)),
               ),
             ),
             ShutterButton(
@@ -344,10 +458,10 @@ const double _kControlSize = 46;
 const double _kRowPadX = 24;
 
 BoxDecoration _controlDecoration() => BoxDecoration(
-      shape: BoxShape.circle,
-      color: Colors.black.withValues(alpha: 0.4),
-      border: Border.all(color: Colors.white24, width: 1),
-    );
+  shape: BoxShape.circle,
+  color: Colors.black.withValues(alpha: 0.4),
+  border: Border.all(color: Colors.white24, width: 1),
+);
 
 /// A single round, translucent camera control with two variants — similar to a
 /// React component that takes a `variant` prop, expressed here with named
