@@ -2,14 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../constants/app_durations.dart';
 import '../theme/app_colors.dart';
 
-/// A seamless bottom navigation bar that anchors to the very bottom of the
-/// screen (filling the home-indicator gap) with two destinations.
-///
-/// Mirrors the brushed-paper aesthetic: a warm paper surface with a thin
-/// hairline on top and a single raised "thumb" that glides between the
-/// active destination.
+/// Bottom navigation anchored to the very bottom of the screen, filling the
+/// home-indicator gap: a paper surface with a hairline top edge and a single
+/// raised thumb that glides to the active destination.
 class PostmarkNav extends StatelessWidget {
   const PostmarkNav({
     super.key,
@@ -24,6 +22,8 @@ class PostmarkNav extends StatelessWidget {
     _NavItem(label: 'Stamp'),
     _NavItem(label: 'Book'),
   ];
+
+  static const double _barHeight = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -43,8 +43,8 @@ class PostmarkNav extends StatelessWidget {
           ),
         ],
       ),
-      // Reserve the home-indicator area as part of the bar (no white gap),
-      // while keeping the touch targets above it.
+      // The home-indicator area is part of the bar, so no white gap shows below
+      // it, while the touch targets stay above.
       padding: EdgeInsets.only(
         left: 12,
         right: 12,
@@ -56,12 +56,11 @@ class PostmarkNav extends StatelessWidget {
           final segmentWidth = constraints.maxWidth / _items.length;
 
           return SizedBox(
-            height: 56,
+            height: _barHeight,
             child: Stack(
               children: [
-                // The gliding raised thumb behind the active segment.
                 AnimatedAlign(
-                  duration: const Duration(milliseconds: 280),
+                  duration: AppDurations.navThumb,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment(
                     _items.length == 1
@@ -71,7 +70,7 @@ class PostmarkNav extends StatelessWidget {
                   ),
                   child: Container(
                     width: segmentWidth - 12,
-                    height: 56,
+                    height: _barHeight,
                     decoration: BoxDecoration(
                       color: AppColors.metalLight.withValues(alpha: 0.45),
                       borderRadius: BorderRadius.circular(20),
@@ -141,16 +140,15 @@ class _NavSegment extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Active icon lifts and grows just a touch.
             AnimatedScale(
-              duration: const Duration(milliseconds: 240),
+              duration: AppDurations.navIcon,
               curve: Curves.easeOut,
               scale: selected ? 1.08 : 1.0,
               child: iconBuilder(color),
             ),
             const SizedBox(height: 4),
             AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 220),
+              duration: AppDurations.navLabel,
               curve: Curves.easeOut,
               style: TextStyle(
                 color: color,
@@ -167,25 +165,26 @@ class _NavSegment extends StatelessWidget {
   }
 }
 
-/// Draws a scalloped wax-seal / postmark badge — the "Stamp" glyph.
+/// A scalloped wax-seal badge — the "Stamp" glyph.
 class _SealPainter extends CustomPainter {
   _SealPainter({required this.color});
 
   final Color color;
 
+  static const _scallops = 12;
+  static const _notchDepth = 0.82;
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final outer = size.shortestSide / 2;
-    final inner = outer * 0.82; // depth of the scallop notches
-    const scallops = 12;
+    final inner = outer * _notchDepth;
 
     final path = Path();
-    const steps = scallops * 2;
+    const steps = _scallops * 2;
     for (var i = 0; i <= steps; i++) {
-      final t = i / steps;
-      final angle = t * 2 * math.pi - math.pi / 2;
-      // alternate between outer (bump) and inner (notch) radius
+      final angle = (i / steps) * 2 * math.pi - math.pi / 2;
+      // Alternates bump, notch, bump… around the circle.
       final r = i.isEven ? outer : inner;
       final p = center + Offset(math.cos(angle) * r, math.sin(angle) * r);
       if (i == 0) {
@@ -196,10 +195,7 @@ class _SealPainter extends CustomPainter {
     }
     path.close();
 
-    final fill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, fill);
+    canvas.drawPath(path, Paint()..color = color);
   }
 
   @override

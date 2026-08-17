@@ -13,9 +13,11 @@ class ShutterButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool enabled;
 
-  /// Fires `true` on touch-down and `false` on release/cancel so the caller can
-  /// react (e.g. press the machine frame down).
+  /// Fires `true` on touch-down and `false` on release, so the caller can press
+  /// the machine frame down to match.
   final ValueChanged<bool>? onPressedChanged;
+
+  static const double _innerSize = 56;
 
   void _setPressed(bool value) => onPressedChanged?.call(value);
 
@@ -41,8 +43,8 @@ class ShutterButton extends StatelessWidget {
           ),
           child: Center(
             child: Container(
-              width: 56,
-              height: 56,
+              width: _innerSize,
+              height: _innerSize,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white,
