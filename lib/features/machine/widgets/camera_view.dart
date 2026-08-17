@@ -60,6 +60,8 @@ class CameraView extends StatelessWidget {
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
+                // previewSize is reported in sensor (landscape) orientation;
+                // swap the axes to size the portrait preview.
                 width: cam.value.previewSize!.height,
                 height: cam.value.previewSize!.width,
                 child: CameraPreview(cam),
