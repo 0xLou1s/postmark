@@ -18,15 +18,14 @@ class CropRequest {
   final bool flipH;
 }
 
-/// Runs on a background isolate via [compute]: decode, normalise orientation,
-/// crop to the requested fractions, and re-encode as JPEG. Falls back to the
-/// original bytes if anything is off.
+/// Runs on a background isolate via [compute]. Falls back to the original bytes
+/// if anything is off.
 Uint8List cropJpeg(CropRequest r) {
   final decoded = img.decodeImage(r.bytes);
   if (decoded == null) return r.bytes;
   var baked = img.bakeOrientation(decoded);
-  // Mirror first so screen-space crop fractions (from the mirrored preview)
-  // map onto the same pixels and the result matches what the user saw.
+  // Mirror first, so crop fractions measured on the mirrored preview land on the
+  // same pixels the user saw.
   if (r.flipH) baked = img.flipHorizontal(baked);
 
   final x = (r.u0 * baked.width).round();

@@ -44,9 +44,8 @@ class CameraView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cam = machine.controller;
-    // While flipping lenses the old controller is disposed before the new one
-    // is ready — keep the bezel + controls, but show black/loading in place of
-    // the preview so we never render CameraPreview against a disposed camera.
+    // While flipping, the old controller is already disposed — keep the bezel and
+    // controls, but never render CameraPreview against a dead camera.
     final showPreview =
         !machine.switching && cam != null && cam.value.isInitialized;
 
@@ -60,8 +59,7 @@ class CameraView extends StatelessWidget {
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
-                // previewSize is reported in sensor (landscape) orientation;
-                // swap the axes to size the portrait preview.
+                // previewSize is reported landscape; swap for a portrait preview.
                 width: cam.value.previewSize!.height,
                 height: cam.value.previewSize!.width,
                 child: CameraPreview(cam),
@@ -94,8 +92,6 @@ class CameraView extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 child: MachineOverlayFrame(
                   windowKey: windowKey,
-                  // Stamp perforation drawn in code over the live preview; its
-                  // dark border bleeds under the bezel to hide any rim gap.
                   windowBuilder: (bleed) => StampNotchOverlay(bleed: bleed),
                 ),
               ),

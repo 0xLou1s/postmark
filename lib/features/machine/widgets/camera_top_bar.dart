@@ -30,8 +30,7 @@ class CameraTopBar extends StatelessWidget {
             right: MachineMetrics.rowPadX,
           ),
           child: Row(
-            // Pin to the top edge; without this the Row centres itself in
-            // the full-height Positioned.fill.
+            // Without this the Row centres itself in the full-height fill.
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -41,7 +40,6 @@ class CameraTopBar extends StatelessWidget {
                 tooltip: 'Flash',
               ),
               const SizedBox(width: MachineMetrics.shutterSize),
-              // Only the badge rebuilds while pinching, not the preview.
               ValueListenableBuilder<double>(
                 valueListenable: zoomNotifier,
                 builder: (context, zoom, _) =>
@@ -55,7 +53,6 @@ class CameraTopBar extends StatelessWidget {
   }
 }
 
-/// Icon reflecting the current flash mode.
 IconData _flashIcon(FlashMode mode) {
   switch (mode) {
     case FlashMode.always:

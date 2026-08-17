@@ -7,18 +7,15 @@ import 'data/stamp_repository.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // The store needs the documents directory, which is async, so it is resolved
-  // before the app starts and injected through the provider override.
+  // Resolved before the app starts because the documents directory is async.
   final store = await createAppStampStore();
   final container = ProviderContainer(
     overrides: [stampStoreProvider.overrideWithValue(store)],
   );
 
-  // Startup must reach runApp even if storage is unavailable — a locked or
-  // corrupt database would otherwise leave the user staring at a dead launch
-  // screen with no way back to the camera. The book comes up empty in that
-  // case, but nothing on disk has been touched, so a later launch that can
-  // open the store still finds every stamp.
+  // Startup must reach runApp even with storage unavailable: a locked or corrupt
+  // database would otherwise strand the user on a dead launch screen. The book
+  // comes up empty, but nothing on disk is touched, so a later launch recovers.
   try {
     await container.read(stampRepositoryProvider.notifier).initialize();
   } catch (error, stack) {
