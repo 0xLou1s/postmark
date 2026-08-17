@@ -23,5 +23,6 @@ it full size with its caption and date.
 
 ## Note
 
-Stamps are kept in memory, so they are lost when the app closes. Persistence
-isn't built yet.
+Stamps are stored on the device — images as files, captions and dates in a
+small database — so the book survives closing the app. Nothing leaves the
+phone, and the stamps do not appear in your photo library.
