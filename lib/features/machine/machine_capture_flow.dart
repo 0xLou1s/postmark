@@ -27,19 +27,20 @@ class MachineCaptureFlow extends ChangeNotifier {
   bool _busy = false;
   bool _pressed = false;
   Uint8List? _ejectImage;
+  bool _disposed = false;
 
   bool get busy => _busy;
   bool get pressed => _pressed;
   Uint8List? get ejectImage => _ejectImage;
 
   set pressed(bool value) {
-    if (_pressed == value) return;
+    if (_disposed || _pressed == value) return;
     _pressed = value;
     notifyListeners();
   }
 
   void _setBusy(bool value) {
-    if (_busy == value) return;
+    if (_disposed || _busy == value) return;
     _busy = value;
     notifyListeners();
   }
@@ -93,6 +94,7 @@ class MachineCaptureFlow extends ChangeNotifier {
   /// Runs the eject animation with [bytes] showing in the slot, leaving the
   /// image on screen when it completes so the caller can navigate over it.
   Future<void> eject(Uint8List bytes) async {
+    if (_disposed) return;
     _ejectImage = bytes;
     notifyListeners();
     await _ejectAnimation.forward(from: 0);
@@ -100,6 +102,7 @@ class MachineCaptureFlow extends ChangeNotifier {
 
   /// Clears the ejected image and releases the busy latch.
   void reset() {
+    if (_disposed) return;
     _ejectImage = null;
     _busy = false;
     _ejectAnimation.reset();
@@ -108,6 +111,7 @@ class MachineCaptureFlow extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _ejectAnimation.dispose();
     super.dispose();
   }
