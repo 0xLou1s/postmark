@@ -79,14 +79,34 @@ class SqliteStampStore implements StampStore {
     // thumbnails, a search index) will land inside, so it belongs here now
     // rather than being retrofitted later. Don't simplify this to a bare
     // insert.
-    await _db.transaction((txn) async {
-      await txn.insert(StampDatabase.table, {
-        StampDatabase.columnId: id,
-        StampDatabase.columnImagePath: relativePath,
-        StampDatabase.columnDate: date.millisecondsSinceEpoch,
-        StampDatabase.columnCaption: storedCaption,
+    try {
+      if (_failNextInsert) {
+        _failNextInsert = false;
+        throw Exception('insert failed');
+      }
+      await _db.transaction((txn) async {
+        await txn.insert(StampDatabase.table, {
+          StampDatabase.columnId: id,
+          StampDatabase.columnImagePath: relativePath,
+          StampDatabase.columnDate: date.millisecondsSinceEpoch,
+          StampDatabase.columnCaption: storedCaption,
+        });
       });
-    });
+    } catch (_) {
+      // The row never landed, so this file would be adopted as a separate,
+      // captionless stamp on the next launch — and a retry writes its own copy,
+      // leaving the same photo in the book twice. Dropping it is safe here and
+      // only here: the caller still holds the bytes in memory and is about to
+      // be told the save failed, so nothing is lost by removing the file.
+      // Reconciliation must never do this, because there the bytes on disk are
+      // the only remaining copy.
+      try {
+        await File(absolutePath).delete();
+      } catch (_) {
+        // Leave it for reconciliation: a duplicate stamp beats a lost photo.
+      }
+      rethrow;
+    }
 
     return Stamp(
       id: id,
@@ -173,9 +193,36 @@ class SqliteStampStore implements StampStore {
       final id = _paths.idForFile(entity);
       if (knownIds.contains(id)) continue;
 
-      await _adopt(entity, id);
+      if (_beforeAdopt != null) await _beforeAdopt!();
+
+      // One unadoptable file must not abort the sweep. reconcile() runs during
+      // startup, so letting a single bad file throw would leave every other
+      // stamp unrecovered — losing access to the whole book over one stray.
+      // The file is left on disk for a later pass rather than deleted.
+      // One unadoptable file must not abort the sweep. reconcile() runs during
+      // startup, so letting a single bad file throw would leave every other
+      // stamp unrecovered — losing access to the whole book over one stray.
+      // The file is left on disk for a later pass rather than deleted.
+      try {
+        await _adopt(entity, id);
+      } catch (error, stack) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'postmark',
+          context: ErrorDescription('adopting ${p.basename(entity.path)}'),
+        ));
+      }
     }
   }
+
+  /// Runs just before each adoption, to simulate a file disappearing or an I/O
+  /// error mid-sweep. Tests only.
+  @visibleForTesting
+  Future<void> debugOnBeforeAdopt(Future<void> Function() hook) async =>
+      _beforeAdopt = hook;
+
+  Future<void> Function()? _beforeAdopt;
 
   /// Re-creates a row for an image that has none.
   ///
@@ -221,4 +268,11 @@ class SqliteStampStore implements StampStore {
   /// that [save] is ordered to make the only reachable one. Tests only.
   @visibleForTesting
   Future<void> debugDeleteRow(String id) => _deleteRow(id);
+
+  /// Makes the next [save] fail at the insert, after its image is on disk.
+  /// Tests only.
+  @visibleForTesting
+  Future<void> debugFailNextInsert() async => _failNextInsert = true;
+
+  bool _failNextInsert = false;
 }

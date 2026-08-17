@@ -24,8 +24,13 @@ class _FakeStampStore implements StampStore {
   /// Set to make [save] throw, exercising the failure path.
   bool failOnSave = false;
 
+  /// Set to make [open] throw, as a locked or corrupt database would.
+  bool failOnOpen = false;
+
   @override
-  Future<void> open() async {}
+  Future<void> open() async {
+    if (failOnOpen) throw Exception('database locked');
+  }
 
   @override
   Future<void> close() async {}
@@ -122,7 +127,10 @@ Future<ProviderContainer> _container() async {
   final container = ProviderContainer(
     overrides: [stampStoreProvider.overrideWithValue(_store)],
   );
-  await container.read(stampRepositoryProvider.notifier).initialize();
+  // Swallowed the way main() does, so a storage failure still reaches the UI.
+  try {
+    await container.read(stampRepositoryProvider.notifier).initialize();
+  } catch (_) {}
   return container;
 }
 
@@ -210,6 +218,25 @@ void main() {
     expect(find.text('Save to Book'), findsOneWidget);
     expect(find.text('book'), findsNothing);
     expect(find.text("Couldn't save that stamp. Try again."), findsOneWidget);
+  });
+
+  testWidgets('storage that never opened reports a failed save, not a crash', (
+    tester,
+  ) async {
+    // The app launches with unusable storage: main() swallows the initialize
+    // error so the camera still works. Saving must then fail the way any other
+    // save failure does rather than throwing out of the button handler.
+    _store.failOnOpen = true;
+    await _pumpApp(tester, image);
+
+    await tester.tap(find.text('open-preview'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save to Book'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text("Couldn't save that stamp. Try again."), findsOneWidget);
+    expect(find.text('Save to Book'), findsOneWidget);
   });
 
   testWidgets('retake also leaves the camera on top', (tester) async {

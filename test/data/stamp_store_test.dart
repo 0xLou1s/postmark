@@ -197,4 +197,48 @@ void main() {
     expect(afterSecond.single.id, afterFirst.single.id);
     await store.close();
   });
+
+  test('one unadoptable file does not abort the whole sweep', () async {
+    final store = await openStore();
+    final healthy = await store.save(image: _bytes, caption: 'keep me');
+    await store.debugDeleteRow(healthy.id);
+
+    // A file that vanishes between the directory listing and the adopt call —
+    // the same shape as any per-file I/O error during a sweep. It must not stop
+    // the healthy orphan beside it from being recovered.
+    final doomed = File(p.join(docs.path, 'stamps', 'aaaa-vanishing.jpg'));
+    await doomed.writeAsBytes(_bytes);
+    await store.debugOnBeforeAdopt(() async {
+      if (doomed.existsSync()) await doomed.delete();
+    });
+
+    await store.reconcile();
+    final loaded = await store.loadAll();
+
+    expect(loaded, hasLength(1), reason: 'the healthy orphan still came back');
+    expect(loaded.single.id, healthy.id);
+    await store.close();
+  });
+
+  test('a failed save leaves nothing behind to duplicate later', () async {
+    final store = await openStore();
+
+    // The row insert fails after the JPEG is already on disk. Without cleanup
+    // that file would be adopted as its own captionless stamp on the next
+    // launch, so the user's retry would put the same photo in the book twice.
+    await store.debugFailNextInsert();
+    await expectLater(
+      store.save(image: _bytes, caption: 'first try'),
+      throwsA(anything),
+    );
+
+    final retried = await store.save(image: _bytes, caption: 'second try');
+    await store.reconcile();
+    final loaded = await store.loadAll();
+
+    expect(loaded, hasLength(1), reason: 'no orphan left to adopt separately');
+    expect(loaded.single.id, retried.id);
+    expect(loaded.single.caption, 'second try');
+    await store.close();
+  });
 }
