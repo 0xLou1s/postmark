@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'theme.dart';
+import '../core/theme/app_theme.dart';
 import 'router.dart';
 
 class PostmarkApp extends StatelessWidget {
