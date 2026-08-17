@@ -29,7 +29,10 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
           image: widget.image,
           caption: _caption.text,
         );
-    // Clear the printing/preview stack, land in the book.
+    // Leave the Stamp branch's stack before switching branches — go() alone
+    // would leave this screen on it, so returning to Stamp would show the
+    // preview again instead of the camera.
+    Navigator.of(context).pop();
     context.go('/book');
   }
 
