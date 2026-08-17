@@ -5,19 +5,24 @@ import '../../core/constants/app_durations.dart';
 import 'gallery_picker.dart';
 import 'machine_controller.dart';
 
-/// Owns the capture sequence and the transient UI state around it: whether a
-/// capture is in flight, whether the machine is pressed down, and the image
-/// currently ejecting from the slot.
+/// Owns both capture paths — live camera and gallery — and the transient UI
+/// state around them: whether a capture is in flight, whether the machine is
+/// pressed down, and the image currently ejecting from the slot.
+///
+/// Both entry points latch [busy] themselves and refuse to run while another
+/// capture is in flight. On success the caller must call [reset] once it has
+/// finished with the returned bytes.
 class MachineCaptureFlow extends ChangeNotifier {
-  MachineCaptureFlow({required this.vsync}) {
-    ejectAnimation = AnimationController(
+  MachineCaptureFlow({required TickerProvider vsync}) {
+    _ejectAnimation = AnimationController(
       vsync: vsync,
       duration: AppDurations.eject,
     );
   }
 
-  final TickerProvider vsync;
-  late final AnimationController ejectAnimation;
+  late final AnimationController _ejectAnimation;
+
+  Animation<double> get ejectAnimation => _ejectAnimation;
 
   bool _busy = false;
   bool _pressed = false;
@@ -27,26 +32,30 @@ class MachineCaptureFlow extends ChangeNotifier {
   bool get pressed => _pressed;
   Uint8List? get ejectImage => _ejectImage;
 
-  set busy(bool value) {
-    if (_busy == value) return;
-    _busy = value;
-    notifyListeners();
-  }
-
   set pressed(bool value) {
     if (_pressed == value) return;
     _pressed = value;
     notifyListeners();
   }
 
+  void _setBusy(bool value) {
+    if (_busy == value) return;
+    _busy = value;
+    notifyListeners();
+  }
+
   /// Presses the machine down, captures a frame cropped to the bezel window,
-  /// then releases and settles. Returns the captured bytes, or null if the
-  /// capture failed (in which case [busy] is cleared).
+  /// then releases and settles. Returns null if a capture is already running or
+  /// the capture failed; the caller must call [reset] once it has finished with
+  /// a successful result.
   Future<Uint8List?> captureFromCamera(
     MachineController controller, {
     required Rect? windowRect,
     required Size? screenSize,
   }) async {
+    if (_busy) return null;
+    _setBusy(true);
+
     pressed = true;
     await Future.delayed(AppDurations.pressDown);
 
@@ -59,19 +68,23 @@ class MachineCaptureFlow extends ChangeNotifier {
 
     pressed = false;
     if (bytes == null) {
-      busy = false;
+      _setBusy(false);
       return null;
     }
     await Future.delayed(AppDurations.springBack);
     return bytes;
   }
 
-  /// Opens the gallery. Returns the chosen bytes, or null on cancel (in which
-  /// case [busy] is cleared).
+  /// Opens the gallery. Returns null if a capture is already running or the
+  /// user cancelled; the caller must call [reset] once it has finished with a
+  /// successful result.
   Future<Uint8List?> pickFromGallery() async {
+    if (_busy) return null;
+    _setBusy(true);
+
     final bytes = await pickImageBytes();
     if (bytes == null) {
-      busy = false;
+      _setBusy(false);
       return null;
     }
     return bytes;
@@ -82,20 +95,20 @@ class MachineCaptureFlow extends ChangeNotifier {
   Future<void> eject(Uint8List bytes) async {
     _ejectImage = bytes;
     notifyListeners();
-    await ejectAnimation.forward(from: 0);
+    await _ejectAnimation.forward(from: 0);
   }
 
   /// Clears the ejected image and releases the busy latch.
   void reset() {
     _ejectImage = null;
     _busy = false;
-    ejectAnimation.reset();
+    _ejectAnimation.reset();
     notifyListeners();
   }
 
   @override
   void dispose() {
-    ejectAnimation.dispose();
+    _ejectAnimation.dispose();
     super.dispose();
   }
 }
