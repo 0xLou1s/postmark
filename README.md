@@ -1,17 +1,27 @@
-# postmark
+# Postmark
 
-A new Flutter project.
+A camera that turns your photos into postage stamps.
 
-## Getting Started
+Instead of a feed, you get a stamp book. Point the camera through the machine's
+bezel, press the shutter, and the machine presses down and prints a perforated
+stamp that ejects out of the slot. Give it a caption, and it goes into the book.
 
-This project is a starting point for a Flutter application.
+Quiet and non-social by design — no likes, no followers, no sharing. Just a
+small collection of moments you chose to keep.
 
-A few resources to get you started if this is your first Flutter project:
+## What you can do
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+**Print a stamp.** A full-screen viewfinder sits behind a brushed-metal machine
+frame; whatever shows through the window is what gets stamped. Flash, pinch to
+zoom, and flip between front and back cameras. You can also pull a photo from
+your gallery instead of shooting one.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**Add a caption.** A few words to keep with the stamp, or leave it blank.
+
+**Browse the book.** Stamps are grouped by month, newest first. Tap one to see
+it full size with its caption and date.
+
+## Note
+
+Stamps are kept in memory, so they are lost when the app closes. Persistence
+isn't built yet.
