@@ -10,6 +10,31 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// Bytes only need to be distinguishable on disk; the store never decodes them.
 final _bytes = Uint8List.fromList([1, 2, 3, 4]);
 
+/// The real store with seams for the two failures that cannot be provoked from
+/// outside: an insert that fails once the image is already on disk, and a file
+/// that disappears between the directory listing and its adoption.
+class _FaultyStampStore extends SqliteStampStore {
+  _FaultyStampStore(super.paths);
+
+  bool failNextInsert = false;
+  Future<void> Function()? beforeAdopt;
+
+  @override
+  Future<void> insertStamp(Map<String, Object?> values) async {
+    if (failNextInsert) {
+      failNextInsert = false;
+      throw Exception('insert failed');
+    }
+    return super.insertStamp(values);
+  }
+
+  @override
+  Future<void> adoptFile(File file, String id) async {
+    await beforeAdopt?.call();
+    return super.adoptFile(file, id);
+  }
+}
+
 void main() {
   // sqflite targets mobile; ffi provides a real SQLite for the Dart VM.
   setUpAll(() {
@@ -28,8 +53,8 @@ void main() {
   });
 
   /// Opens a store over the shared temp directory, as a fresh app launch would.
-  Future<SqliteStampStore> openStore() async {
-    final store = SqliteStampStore(StampPaths(docs));
+  Future<_FaultyStampStore> openStore() async {
+    final store = _FaultyStampStore(StampPaths(docs));
     await store.open();
     return store;
   }
@@ -91,6 +116,16 @@ void main() {
     expect(loaded.single.imagePath, startsWith(moved.path));
     expect(File(loaded.single.imagePath).existsSync(), isTrue);
     await movedStore.close();
+  });
+
+  test('opening twice is a no-op, as a hot restart does', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'kept');
+
+    await store.open();
+
+    expect((await store.loadAll()).single.id, saved.id);
+    await store.close();
   });
 
   test('an orphaned image is adopted back into the book', () async {
@@ -208,9 +243,9 @@ void main() {
     // the healthy orphan beside it from being recovered.
     final doomed = File(p.join(docs.path, 'stamps', 'aaaa-vanishing.jpg'));
     await doomed.writeAsBytes(_bytes);
-    await store.debugOnBeforeAdopt(() async {
+    store.beforeAdopt = () async {
       if (doomed.existsSync()) await doomed.delete();
-    });
+    };
 
     await store.reconcile();
     final loaded = await store.loadAll();
@@ -226,7 +261,7 @@ void main() {
     // The row insert fails after the JPEG is already on disk. Without cleanup
     // that file would be adopted as its own captionless stamp on the next
     // launch, so the user's retry would put the same photo in the book twice.
-    await store.debugFailNextInsert();
+    store.failNextInsert = true;
     await expectLater(
       store.save(image: _bytes, caption: 'first try'),
       throwsA(anything),
