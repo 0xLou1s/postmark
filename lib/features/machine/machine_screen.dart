@@ -137,8 +137,8 @@ class _MachineScreenState extends ConsumerState<MachineScreen>
         onShutter: _onShutter,
         onShutterPressedChanged: (p) => _flow.pressed = p,
         onPick: _onPick,
-        onFlip: () => machine.switchCamera(),
-        onToggleFlash: () => machine.cycleFlash(),
+        onFlip: machine.switchCamera,
+        onToggleFlash: machine.cycleFlash,
         onZoomStart: () => _baseZoom = machine.zoom,
         onZoomUpdate: (scale) => machine.setZoom(_baseZoom * scale),
       );
