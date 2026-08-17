@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/widgets/perforated_border.dart';
-import '../../data/in_memory_stamp_repository.dart';
+import '../../data/stamp_repository.dart';
 import '../../domain/stamp.dart';
 
 class StampDetailScreen extends ConsumerWidget {

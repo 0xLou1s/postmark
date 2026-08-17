@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/perforated_border.dart';
-import '../../data/in_memory_stamp_repository.dart';
+import '../../data/stamp_repository.dart';
 import '../../domain/stamp.dart';
 
 class PreviewScreen extends ConsumerStatefulWidget {
