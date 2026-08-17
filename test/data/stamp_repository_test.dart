@@ -95,6 +95,14 @@ void main() {
     expect(repository.state.single.id, kept.id);
   });
 
+  test('removing a stamp that is already gone changes nothing', () async {
+    final kept = await repository.add(image: _bytes);
+
+    await repository.remove({'not-a-real-id'});
+
+    expect(repository.state.single.id, kept.id);
+  });
+
   test('a failed delete leaves the book unchanged', () async {
     final stamp = await repository.add(image: _bytes, caption: 'still here');
     store.failOnDelete.add(stamp.id);

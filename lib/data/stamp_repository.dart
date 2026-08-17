@@ -26,9 +26,6 @@ class SqliteStampRepository extends StateNotifier<List<Stamp>> {
     return stamp;
   }
 
-  /// Removes stamps from the book. One id or many — a single delete is a set
-  /// of one.
-  ///
   /// State is updated only once the store call succeeds, so a failure leaves
   /// the book showing exactly what is still on disk.
   Future<void> remove(Iterable<String> ids) async {
@@ -38,7 +35,12 @@ class SqliteStampRepository extends StateNotifier<List<Stamp>> {
     } catch (_) {
       // A batch can fail partway, so filtering by [gone] here would drop
       // stamps that were never deleted. Ask the store what actually survived.
-      state = await _store.loadAll();
+      try {
+        state = await _store.loadAll();
+      } catch (_) {
+        // The delete's failure is the one the caller can act on; losing it to
+        // a failed reload would leave them with the less useful error.
+      }
       rethrow;
     }
     state = [
