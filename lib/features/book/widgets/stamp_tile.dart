@@ -23,6 +23,7 @@ class StampTile extends StatelessWidget {
   final bool selected;
 
   static const _decodeWidth = 400;
+  static const _notchRadius = 5.0;
 
   static const _dimColor = Color(0x99000000);
   static const _checkSize = 22.0;
@@ -37,7 +38,7 @@ class StampTile extends StatelessWidget {
       child: AspectRatio(
         aspectRatio: kStampAspectRatio,
         child: StampFrame(
-          notchRadius: 5,
+          notchRadius: _notchRadius,
           child: Stack(
             fit: StackFit.expand,
             children: [
