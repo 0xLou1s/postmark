@@ -49,6 +49,10 @@ class MachineCaptureFlow extends ChangeNotifier {
   /// then releases and settles. Returns null if a capture is already running or
   /// the capture failed; the caller must call [reset] once it has finished with
   /// a successful result.
+  ///
+  /// Runs to completion even if the caller is torn down mid-sequence — the
+  /// bytes are simply discarded. Aborting early would mean handing this class a
+  /// view of the widget lifecycle, which is what it exists to stay clear of.
   Future<Uint8List?> captureFromCamera(
     MachineController controller, {
     required Rect? windowRect,
