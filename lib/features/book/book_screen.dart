@@ -40,6 +40,10 @@ class BookScreen extends ConsumerWidget {
 
     return PopScope(
       canPop: !isSelecting,
+      // Back leaves the selection before it leaves the book; the callback always
+      // clears, so a second back pops as usual. This blocks every pop while
+      // selecting, not only the system gesture, which is only safe while /book
+      // is a root route with nothing beneath it to go back to.
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) selection.clear();
       },

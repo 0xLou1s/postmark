@@ -245,6 +245,34 @@ void main() {
     expect(container.read(stampRepositoryProvider), hasLength(3));
   });
 
+  testWidgets('a partly failed delete shows what the store actually deleted', (
+    tester,
+  ) async {
+    final container = await _pumpBook(tester);
+    _store.failOnDelete.add('a');
+
+    // Both July stamps: 'b' deletes, 'a' does not.
+    await _longPressFirst(tester);
+    await tester.tap(find.byType(StampTile).at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('2 selected'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    // The book shows the stamps that survived, not the ones that were asked
+    // for: 'b' is gone even though the batch as a whole failed.
+    expect(
+      container.read(stampRepositoryProvider).map((s) => s.id),
+      unorderedEquals(['a', 'c']),
+    );
+    expect(find.text("Couldn't delete that. Try again."), findsOneWidget);
+    // The whole selection survives, so a retry needs no reselecting.
+    expect(find.text('2 selected'), findsOneWidget);
+  });
+
   testWidgets('deleting a month\'s only stamp removes its header', (
     tester,
   ) async {
