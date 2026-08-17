@@ -17,6 +17,8 @@ abstract class StampStore {
   Future<void> close();
   Future<Stamp> save({required Uint8List image, String? caption});
   Future<List<Stamp>> loadAll();
+  Future<void> delete(String id);
+  Future<void> deleteAll(Iterable<String> ids);
   Future<void> reconcile();
 }
 
@@ -264,8 +266,64 @@ class SqliteStampStore implements StampStore {
     );
   }
 
-  /// Drops a row but keeps its image — the crash state [save] is ordered to make
-  /// the only reachable one. Tests only.
+  /// The image is deleted before the row — the reverse of [save], and for the
+  /// same reason. Crashing between the two leaves a row with no image, which
+  /// [reconcile] drops, finishing the delete. The other order would leave an
+  /// orphaned file that [reconcile] adopts back, undoing the delete and losing
+  /// the caption with it.
+  ///
+  /// Deleting a stamp that is already gone is a no-op: a stale UI must not
+  /// throw for doing the same work twice.
+  @override
+  Future<void> delete(String id) async {
+    final rows = await _db.query(
+      StampDatabase.table,
+      columns: [StampDatabase.columnImagePath],
+      where: '${StampDatabase.columnId} = ?',
+      whereArgs: [id],
+    );
+    if (rows.isEmpty) return;
+
+    final relativePath = rows.single[StampDatabase.columnImagePath]! as String;
+    await _deleteImage(_paths.absoluteFor(relativePath));
+    await _deleteRow(id);
+  }
+
+  /// A missing file means the delete is already half done, so the row deletion
+  /// still runs. Any other failure keeps the row, leaving the book honest about
+  /// bytes that are still on disk — dropping the row would strand the file for
+  /// [reconcile] to adopt back.
+  Future<void> _deleteImage(String absolutePath) async {
+    try {
+      await File(absolutePath).delete();
+    } on PathNotFoundException {
+      // Not an exists() check: the file can vanish between the two calls.
+    }
+  }
+
+  /// Every id is attempted even after one fails, so a single unreadable file
+  /// cannot strand the rest of a selection. The first failure is reported once
+  /// every id has been attempted.
+  @override
+  Future<void> deleteAll(Iterable<String> ids) async {
+    Object? firstError;
+    StackTrace? firstStack;
+
+    for (final id in ids) {
+      try {
+        await delete(id);
+      } catch (error, stack) {
+        firstError ??= error;
+        firstStack ??= stack;
+      }
+    }
+
+    if (firstError != null) Error.throwWithStackTrace(firstError, firstStack!);
+  }
+
+  /// Drops a row but deliberately keeps its image, which [delete] never does —
+  /// this reproduces the crash state [save] is ordered to make the only
+  /// reachable one. Tests only.
   @visibleForTesting
   Future<void> debugDeleteRow(String id) => _deleteRow(id);
 
