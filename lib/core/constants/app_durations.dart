@@ -1,5 +1,5 @@
 /// Timings for the capture sequence — deliberate but a touch snappier.
-class AppDurations {
+abstract final class AppDurations {
   /// Scale down/up while the shutter presses the machine.
   static const pressAnim = Duration(milliseconds: 440);
 

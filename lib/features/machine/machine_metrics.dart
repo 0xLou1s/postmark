@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-class MachineMetrics {
+abstract final class MachineMetrics {
   /// Insets around the machine. The horizontal padding shrinks the body (the
   /// AspectRatio is width-limited) so it reads as a smaller device; the bottom
   /// padding keeps it clear of the shutter row. Shared by the live frame and the
@@ -22,7 +22,8 @@ class MachineMetrics {
   /// steal taps meant for the control buttons.
   static const double zoomGestureBottomInset = 160;
 
-  /// Width reserved between the flash button and the zoom badge, matching the
-  /// shutter so the top and bottom rows align.
-  static const double shutterSpacerWidth = 76;
+  /// Diameter of the shutter button. The top control row reserves this much
+  /// space in its middle so the flash and zoom controls line up with the
+  /// gallery and flip buttons below.
+  static const double shutterSize = 76;
 }
