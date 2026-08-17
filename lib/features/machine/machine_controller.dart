@@ -4,7 +4,8 @@ import 'dart:ui' show Rect, Size;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:image/image.dart' as img;
+
+import 'image_crop.dart';
 
 /// Owns the CameraController lifecycle. Exposes init + capture.
 class MachineController extends ChangeNotifier {
@@ -171,7 +172,7 @@ class MachineController extends ChangeNotifier {
     final file = await c.takePicture();
     final bytes = await file.readAsBytes();
     if (!_isFront) return bytes;
-    return compute(_cropJpeg, _CropRequest(bytes, 0, 0, 1, 1, flipH: true));
+    return compute(cropJpeg, CropRequest(bytes, 0, 0, 1, 1, flipH: true));
   }
 
   /// Captures a full-resolution photo and crops it to exactly the part of the
@@ -215,8 +216,8 @@ class MachineController extends ChangeNotifier {
     // shots are flipped so the crop (measured on the mirrored preview) lines up
     // and the result matches what the user saw.
     return compute(
-      _cropJpeg,
-      _CropRequest(bytes, u0, v0, u1, v1, flipH: _isFront),
+      cropJpeg,
+      CropRequest(bytes, u0, v0, u1, v1, flipH: _isFront),
     );
   }
 
@@ -226,44 +227,6 @@ class MachineController extends ChangeNotifier {
     controller?.dispose();
     super.dispose();
   }
-}
-
-/// Crop parameters as fractions [0,1] of the (orientation-baked) image.
-class _CropRequest {
-  const _CropRequest(
-    this.bytes,
-    this.u0,
-    this.v0,
-    this.u1,
-    this.v1, {
-    this.flipH = false,
-  });
-  final Uint8List bytes;
-  final double u0, v0, u1, v1;
-
-  /// Mirror horizontally before cropping (front-camera un-mirroring).
-  final bool flipH;
-}
-
-/// Runs on a background isolate via [compute]: decode, normalise orientation,
-/// crop to the requested fractions, and re-encode as JPEG. Falls back to the
-/// original bytes if anything is off.
-Uint8List _cropJpeg(_CropRequest r) {
-  final decoded = img.decodeImage(r.bytes);
-  if (decoded == null) return r.bytes;
-  var baked = img.bakeOrientation(decoded);
-  // Mirror first so screen-space crop fractions (from the mirrored preview)
-  // map onto the same pixels and the result matches what the user saw.
-  if (r.flipH) baked = img.flipHorizontal(baked);
-
-  final x = (r.u0 * baked.width).round();
-  final y = (r.v0 * baked.height).round();
-  final w = ((r.u1 - r.u0) * baked.width).round();
-  final h = ((r.v1 - r.v0) * baked.height).round();
-  if (w <= 0 || h <= 0) return r.bytes;
-
-  final cropped = img.copyCrop(baked, x: x, y: y, width: w, height: h);
-  return Uint8List.fromList(img.encodeJpg(cropped, quality: 92));
 }
 
 final machineControllerProvider =

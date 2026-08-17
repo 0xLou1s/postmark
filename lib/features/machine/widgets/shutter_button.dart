@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../machine_metrics.dart';
+
 class ShutterButton extends StatelessWidget {
   const ShutterButton({
     super.key,
@@ -27,8 +29,8 @@ class ShutterButton extends StatelessWidget {
       child: Opacity(
         opacity: enabled ? 1 : 0.4,
         child: Container(
-          width: 76,
-          height: 76,
+          width: MachineMetrics.shutterSize,
+          height: MachineMetrics.shutterSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white,

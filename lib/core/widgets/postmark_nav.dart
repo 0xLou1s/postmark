@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
+import '../theme/app_colors.dart';
 
 /// A seamless bottom navigation bar that anchors to the very bottom of the
 /// screen (filling the home-indicator gap) with two destinations.
@@ -31,9 +31,9 @@ class PostmarkNav extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: PostmarkColors.paper,
+        color: AppColors.paper,
         border: const Border(
-          top: BorderSide(color: PostmarkColors.metalLight, width: 1),
+          top: BorderSide(color: AppColors.metalLight, width: 1),
         ),
         boxShadow: [
           BoxShadow(
@@ -73,7 +73,7 @@ class PostmarkNav extends StatelessWidget {
                     width: segmentWidth - 12,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: PostmarkColors.metalLight.withValues(alpha: 0.45),
+                      color: AppColors.metalLight.withValues(alpha: 0.45),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -133,7 +133,7 @@ class _NavSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? PostmarkColors.ink : PostmarkColors.metalDark;
+    final color = selected ? AppColors.ink : AppColors.metalDark;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
