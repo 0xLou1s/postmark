@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/stamp_repository.dart';
 import 'widgets/month_section.dart';
@@ -23,7 +24,15 @@ class BookScreen extends ConsumerWidget {
                   style: TextStyle(color: Colors.black54)))
           : ListView(
               padding: const EdgeInsets.all(16),
-              children: [for (final g in groups) MonthSection(group: g)],
+              children: [
+                for (final g in groups)
+                  MonthSection(
+                    group: g,
+                    selectedIds: const {},
+                    onTapStamp: (stamp) => context.push('/book/${stamp.id}'),
+                    onLongPressStamp: (_) {},
+                  ),
+              ],
             ),
     );
   }
