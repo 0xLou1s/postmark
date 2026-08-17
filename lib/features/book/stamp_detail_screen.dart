@@ -1,8 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/widgets/perforated_border.dart';
-import '../../data/in_memory_stamp_repository.dart';
+import '../../data/stamp_repository.dart';
 import '../../domain/stamp.dart';
 
 class StampDetailScreen extends ConsumerWidget {
@@ -37,8 +39,17 @@ class StampDetailScreen extends ConsumerWidget {
                         child: AspectRatio(
                           aspectRatio: kStampAspectRatio,
                           child: StampFrame(
-                            child:
-                                Image.memory(stamp.image, fit: BoxFit.cover),
+                            child: Image.file(
+                              File(stamp.imagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const ColoredBox(
+                                color: Color(0xFFE8E4DC),
+                                child: Center(
+                                  child: Icon(Icons.broken_image_outlined,
+                                      color: Colors.black26),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),

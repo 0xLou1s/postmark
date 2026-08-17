@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/in_memory_stamp_repository.dart';
+import '../../data/stamp_repository.dart';
 import 'widgets/month_section.dart';
 
 class BookScreen extends ConsumerWidget {
