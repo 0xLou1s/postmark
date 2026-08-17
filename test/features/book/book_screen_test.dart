@@ -1,62 +1,14 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:postmark/data/stamp_repository.dart';
-import 'package:postmark/data/stamp_store.dart';
 import 'package:postmark/domain/stamp.dart';
 import 'package:postmark/features/book/book_screen.dart';
 import 'package:postmark/features/book/widgets/stamp_tile.dart';
 
-/// A store that keeps stamps in memory, because `sqflite` cannot run under
-/// `testWidgets` — its ffi factory hangs on the Flutter test binding.
-/// Persistence itself is covered in `test/data/stamp_store_test.dart`.
-class _FakeStampStore implements StampStore {
-  final List<Stamp> _stamps = [];
-
-  /// Ids whose delete throws, exercising the book's failure path.
-  final Set<String> failOnDelete = {};
-
-  void seed(Stamp stamp) => _stamps.add(stamp);
-
-  @override
-  Future<void> open() async {}
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  Future<void> reconcile() async {}
-
-  @override
-  Future<List<Stamp>> loadAll() async => List.of(_stamps);
-
-  @override
-  Future<void> delete(String id) async {
-    if (failOnDelete.contains(id)) throw Exception('disk error');
-    _stamps.removeWhere((stamp) => stamp.id == id);
-  }
-
-  @override
-  Future<void> deleteAll(Iterable<String> ids) async {
-    Object? firstError;
-    for (final id in ids) {
-      try {
-        await delete(id);
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
-    if (firstError != null) throw firstError;
-  }
-
-  @override
-  Future<Stamp> save({required Uint8List image, String? caption}) async =>
-      throw UnimplementedError();
-}
+import '../../support/fake_stamp_store.dart';
 
 Stamp _stamp(String id, DateTime date) =>
     Stamp(id: id, imagePath: '/fake/stamps/$id.jpg', date: date);
@@ -83,7 +35,7 @@ GoRouter _buildRouter() {
   );
 }
 
-late _FakeStampStore _store;
+late FakeStampStore _store;
 
 Future<ProviderContainer> _pumpBook(WidgetTester tester) async {
   final container = ProviderContainer(
@@ -112,7 +64,7 @@ void main() {
   final july = DateTime(2026, 7, 3);
 
   setUp(() {
-    _store = _FakeStampStore()
+    _store = FakeStampStore()
       ..seed(_stamp('a', july))
       ..seed(_stamp('b', july))
       ..seed(_stamp('c', june));

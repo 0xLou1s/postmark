@@ -1,63 +1,15 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:postmark/data/stamp_repository.dart';
-import 'package:postmark/data/stamp_store.dart';
 import 'package:postmark/domain/stamp.dart';
 import 'package:postmark/features/book/stamp_detail_screen.dart';
 
-/// A store that keeps stamps in memory, because `sqflite` cannot run under
-/// `testWidgets` — its ffi factory hangs on the Flutter test binding.
-/// Persistence itself is covered in `test/data/stamp_store_test.dart`.
-class _FakeStampStore implements StampStore {
-  final List<Stamp> _stamps = [];
+import '../../support/fake_stamp_store.dart';
 
-  /// Ids whose delete throws, exercising the detail screen's failure path.
-  final Set<String> failOnDelete = {};
-
-  void seed(Stamp stamp) => _stamps.add(stamp);
-
-  @override
-  Future<void> open() async {}
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  Future<void> reconcile() async {}
-
-  @override
-  Future<List<Stamp>> loadAll() async => List.of(_stamps);
-
-  @override
-  Future<void> delete(String id) async {
-    if (failOnDelete.contains(id)) throw Exception('disk error');
-    _stamps.removeWhere((stamp) => stamp.id == id);
-  }
-
-  @override
-  Future<void> deleteAll(Iterable<String> ids) async {
-    Object? firstError;
-    for (final id in ids) {
-      try {
-        await delete(id);
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
-    if (firstError != null) throw firstError;
-  }
-
-  @override
-  Future<Stamp> save({required Uint8List image, String? caption}) async =>
-      throw UnimplementedError();
-}
-
-late _FakeStampStore _store;
+late FakeStampStore _store;
 
 /// The detail screen pushed over a stand-in book, so a pop back to the book is
 /// observable.
@@ -100,7 +52,7 @@ Future<ProviderContainer> _pumpDetail(WidgetTester tester) async {
 
 void main() {
   setUp(() {
-    _store = _FakeStampStore()
+    _store = FakeStampStore()
       ..seed(
         Stamp(
           id: 'a',
