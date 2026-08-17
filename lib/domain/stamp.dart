@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 /// Canonical stamp shape (width / height), matching the machine frame's window
 /// opening (463 x 500 px). The viewfinder and every printed stamp share this so
 /// "what you frame is what you print" — the perforation hugs the frame.
@@ -8,13 +6,18 @@ const double kStampAspectRatio = 463 / 500;
 class Stamp {
   const Stamp({
     required this.id,
-    required this.image,
+    required this.imagePath,
     required this.date,
     this.caption,
   });
 
   final String id;
-  final Uint8List image;
+
+  /// Absolute path to the stamp's JPEG on disk. Stored relative in SQLite and
+  /// resolved on read, because the documents directory's absolute path changes
+  /// between installs and after a backup restore.
+  final String imagePath;
+
   final DateTime date;
   final String? caption;
 }
