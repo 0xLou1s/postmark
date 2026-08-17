@@ -9,20 +9,18 @@ import 'package:flutter_riverpod/legacy.dart';
 class StampSelection extends StateNotifier<Set<String>> {
   StampSelection() : super(const {});
 
-  /// Begins selection with one stamp, as a long-press does.
+  /// Begins selection with one stamp, discarding anything selected before.
   void enter(String id) => state = {id};
 
   void toggle(String id) {
+    // A fresh set: StateNotifier compares by identity, so mutating [state] in
+    // place and reassigning it would change the value without notifying anyone.
     final next = Set<String>.of(state);
     if (!next.remove(id)) next.add(id);
-    // Removing the last id leaves selection mode on its own.
     state = next;
   }
 
-  void clear() {
-    if (state.isEmpty) return;
-    state = const {};
-  }
+  void clear() => state = const {};
 }
 
 /// Screen state, not app state: the book resets it on exit, and nothing else

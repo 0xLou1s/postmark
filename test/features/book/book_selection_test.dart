@@ -51,6 +51,21 @@ void main() {
 
     selection.clear();
 
+    // Silent because the empty state is always the canonical `const {}` and
+    // StateNotifier compares by identity — not because clear() guards it.
     expect(notifications, 0);
+  });
+
+  test('emptying the selection by toggling does notify', () {
+    selection.enter('a');
+    var notifications = 0;
+    selection.addListener((_) => notifications++);
+    notifications = 0;
+
+    selection.toggle('a');
+
+    // How the book screen learns to leave selection mode. The set toggle builds
+    // is not the canonical const one, so identity does not suppress this.
+    expect(notifications, 1);
   });
 }
