@@ -57,4 +57,4 @@ final stampGroupsProvider = Provider<List<MonthGroup>>((ref) {
 
 /// Builds a store over the real app documents directory.
 Future<StampStore> createAppStampStore() async =>
-    StampStore(await StampPaths.forApp());
+    SqliteStampStore(await StampPaths.forApp());

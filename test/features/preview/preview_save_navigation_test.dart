@@ -5,8 +5,51 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:postmark/data/in_memory_stamp_repository.dart';
+import 'package:postmark/data/stamp_repository.dart';
+import 'package:postmark/data/stamp_store.dart';
+import 'package:postmark/domain/stamp.dart';
 import 'package:postmark/features/preview/preview_screen.dart';
+
+/// A store that keeps stamps in memory.
+///
+/// These tests are about navigation — that saving leaves the preview off the
+/// Stamp branch's stack — not about persistence, which is covered against a
+/// real database in `test/data/stamp_store_test.dart`. `sqflite` cannot run
+/// under `testWidgets` (its ffi factory hangs on the Flutter test binding), so
+/// the real store is not an option here regardless.
+class _FakeStampStore implements StampStore {
+  final List<Stamp> _stamps = [];
+  var _nextId = 0;
+
+  /// Set to make [save] throw, exercising the failure path.
+  bool failOnSave = false;
+
+  @override
+  Future<void> open() async {}
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> reconcile() async {}
+
+  @override
+  Future<List<Stamp>> loadAll() async => List.of(_stamps);
+
+  @override
+  Future<Stamp> save({required Uint8List image, String? caption}) async {
+    if (failOnSave) throw Exception('disk full');
+    final trimmed = caption?.trim();
+    final stamp = Stamp(
+      id: '${_nextId++}',
+      imagePath: '/fake/stamps/${_stamps.length}.jpg',
+      date: DateTime(2026, 8, 17),
+      caption: (trimmed != null && trimmed.isNotEmpty) ? trimmed : null,
+    );
+    _stamps.add(stamp);
+    return stamp;
+  }
+}
 
 /// A two-branch shell mirroring the real router: a Stamp branch that pushes
 /// PreviewScreen on top of itself, and a Book branch. The real MachineScreen
@@ -73,9 +116,22 @@ GoRouter _buildRouter(Uint8List image) {
   );
 }
 
+late _FakeStampStore _store;
+
+Future<ProviderContainer> _container() async {
+  final container = ProviderContainer(
+    overrides: [stampStoreProvider.overrideWithValue(_store)],
+  );
+  await container.read(stampRepositoryProvider.notifier).initialize();
+  return container;
+}
+
 Future<void> _pumpApp(WidgetTester tester, Uint8List image) async {
+  final container = await _container();
+  addTearDown(container.dispose);
   await tester.pumpWidget(
-    ProviderScope(
+    UncontrolledProviderScope(
+      container: container,
       child: MaterialApp.router(routerConfig: _buildRouter(image)),
     ),
   );
@@ -95,6 +151,8 @@ final _pngPixel = Uint8List.fromList([
 
 void main() {
   final image = _pngPixel;
+
+  setUp(() => _store = _FakeStampStore());
 
   testWidgets('saving leaves the Stamp branch showing the camera', (
     tester,
@@ -118,7 +176,7 @@ void main() {
   });
 
   testWidgets('saving stores the stamp once', (tester) async {
-    final container = ProviderContainer();
+    final container = await _container();
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -135,6 +193,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(stampRepositoryProvider), hasLength(1));
+  });
+
+  testWidgets('a failed save keeps the preview so the photo is not lost', (
+    tester,
+  ) async {
+    _store.failOnSave = true;
+    await _pumpApp(tester, image);
+
+    await tester.tap(find.text('open-preview'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save to Book'));
+    await tester.pumpAndSettle();
+
+    // Still on the preview, with the bytes in hand, so the user can retry.
+    expect(find.text('Save to Book'), findsOneWidget);
+    expect(find.text('book'), findsNothing);
+    expect(find.text("Couldn't save that stamp. Try again."), findsOneWidget);
   });
 
   testWidgets('retake also leaves the camera on top', (tester) async {

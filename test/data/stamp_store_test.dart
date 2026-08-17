@@ -28,8 +28,8 @@ void main() {
   });
 
   /// Opens a store over the shared temp directory, as a fresh app launch would.
-  Future<StampStore> openStore() async {
-    final store = StampStore(StampPaths(docs));
+  Future<SqliteStampStore> openStore() async {
+    final store = SqliteStampStore(StampPaths(docs));
     await store.open();
     return store;
   }
@@ -83,7 +83,7 @@ void main() {
       await entity.copy(target.path);
     }
 
-    final movedStore = StampStore(StampPaths(moved));
+    final movedStore = SqliteStampStore(StampPaths(moved));
     await movedStore.open();
     final loaded = await movedStore.loadAll();
 

@@ -9,14 +9,32 @@ import '../domain/stamp.dart';
 import 'stamp_database.dart';
 import 'stamp_paths.dart';
 
+/// Where stamps are kept.
+///
+/// This exists for one narrow reason: `sqflite` cannot run under `testWidgets`
+/// — the ffi factory hangs on the Flutter test binding — so widget tests that
+/// only care about navigation need a seam that avoids SQLite entirely.
+///
+/// It is deliberately NOT a seam for testing persistence. The durability rules
+/// live in [SqliteStampStore] and are covered against a real database in
+/// `test/data/stamp_store_test.dart`; a fake would have none of that behaviour
+/// and testing against one would assert on code the app never runs.
+abstract class StampStore {
+  Future<void> open();
+  Future<void> close();
+  Future<Stamp> save({required Uint8List image, String? caption});
+  Future<List<Stamp>> loadAll();
+  Future<void> reconcile();
+}
+
 /// Durable storage for stamps: JPEG bytes on disk, metadata in SQLite.
 ///
 /// The invariant behind every method here is that image bytes matter more than
 /// metadata. A photo the user chose to keep is the one thing the app must not
 /// lose, so writes are ordered to make the recoverable failure the only
 /// reachable one.
-class StampStore {
-  StampStore(this._paths);
+class SqliteStampStore implements StampStore {
+  SqliteStampStore(this._paths);
 
   final StampPaths _paths;
   static const _uuid = Uuid();
@@ -24,6 +42,7 @@ class StampStore {
   late final Database _db;
   late final Directory _stampsDir;
 
+  @override
   Future<void> open() async {
     _stampsDir = await _paths.ensureStampsDir();
     _db = await StampDatabase.open(
@@ -31,6 +50,7 @@ class StampStore {
     );
   }
 
+  @override
   Future<void> close() => _db.close();
 
   /// Persists [image] and returns the resulting stamp.
@@ -38,6 +58,7 @@ class StampStore {
   /// The file is written before the row is inserted. Crashing between the two
   /// leaves an image with no row, which startup reconciliation adopts back;
   /// the reverse order would leave a row pointing at nothing, losing the photo.
+  @override
   Future<Stamp> save({required Uint8List image, String? caption}) async {
     final id = _uuid.v4();
     final relativePath = _paths.relativeFor(id);
@@ -89,6 +110,7 @@ class StampStore {
   }
 
   /// Every stamp, newest first.
+  @override
   Future<List<Stamp>> loadAll() async {
     final rows = await _db.query(
       StampDatabase.table,
@@ -116,6 +138,7 @@ class StampStore {
   ///
   /// Idempotent: filename and id are the same value, so a file adopted on one
   /// pass already has a row on the next and is no longer an orphan.
+  @override
   Future<void> reconcile() async {
     final rows = await _db.query(
       StampDatabase.table,
