@@ -52,11 +52,18 @@ class StampStore {
     final storedCaption =
         (trimmed != null && trimmed.isNotEmpty) ? trimmed : null;
 
-    await _db.insert(StampDatabase.table, {
-      StampDatabase.columnId: id,
-      StampDatabase.columnImagePath: relativePath,
-      StampDatabase.columnDate: date.millisecondsSinceEpoch,
-      StampDatabase.columnCaption: storedCaption,
+    // Wrapped in a transaction even though a single insert is already atomic:
+    // this is the boundary future multi-row writes (tags, caption history,
+    // thumbnails, a search index) will land inside, so it belongs here now
+    // rather than being retrofitted later. Don't simplify this to a bare
+    // insert.
+    await _db.transaction((txn) async {
+      await txn.insert(StampDatabase.table, {
+        StampDatabase.columnId: id,
+        StampDatabase.columnImagePath: relativePath,
+        StampDatabase.columnDate: date.millisecondsSinceEpoch,
+        StampDatabase.columnCaption: storedCaption,
+      });
     });
 
     return Stamp(
