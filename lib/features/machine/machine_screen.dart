@@ -22,8 +22,7 @@ class _MachineScreenState extends ConsumerState<MachineScreen>
   late final MachineCaptureFlow _flow;
   double _baseZoom = 1.0;
 
-  // The stack defines screen-space; the window marks the bezel opening we crop
-  // the captured photo to.
+  // The stack is screen-space; the window is the bezel opening to crop to.
   final _stackKey = GlobalKey();
   final _windowKey = GlobalKey();
 
@@ -49,8 +48,8 @@ class _MachineScreenState extends ConsumerState<MachineScreen>
     super.dispose();
   }
 
-  /// Measures the bezel window at rest (scale 1) BEFORE pressing — the press is
-  /// a visual scale only and must not skew the crop region.
+  /// Measured at rest, before the press: the press is a visual scale only and
+  /// must not skew the crop region.
   (Rect?, Size?) _measureWindow() {
     final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
     final windowBox =
@@ -88,7 +87,6 @@ class _MachineScreenState extends ConsumerState<MachineScreen>
     await _ejectAndDescribe(bytes);
   }
 
-  /// Ejects the freshly-stamped photo, then opens the description screen.
   Future<void> _ejectAndDescribe(Uint8List bytes) async {
     await _flow.eject(bytes);
     if (!mounted) return;

@@ -1,6 +1,7 @@
-/// Canonical stamp shape (width / height), matching the machine frame's window
-/// opening (463 x 500 px). The viewfinder and every printed stamp share this so
-/// "what you frame is what you print" — the perforation hugs the frame.
+import 'package:intl/intl.dart';
+
+/// The machine frame's window opening (463 x 500 px). Viewfinder and printed
+/// stamp share it, so what you frame is what you print.
 const double kStampAspectRatio = 463 / 500;
 
 class Stamp {
@@ -13,9 +14,7 @@ class Stamp {
 
   final String id;
 
-  /// Absolute path to the stamp's JPEG on disk. Stored relative in SQLite and
-  /// resolved on read, because the documents directory's absolute path changes
-  /// between installs and after a backup restore.
+  /// Absolute path to the JPEG. Stored relative in SQLite; see [StampPaths].
   final String imagePath;
 
   final DateTime date;
@@ -24,14 +23,19 @@ class Stamp {
 
 class MonthGroup {
   const MonthGroup({required this.label, required this.stamps});
-  final String label; // e.g. "June 2026"
+  final String label;
   final List<Stamp> stamps;
 }
 
-const _monthNames = [
-  '', 'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+/// Every date the user sees: "June 2026" over a month, "Jun 24, 2026" under a
+/// stamp.
+abstract final class StampDateFormat {
+  static final _monthYear = DateFormat.yMMMM();
+  static final _dayInFull = DateFormat.yMMMd();
+
+  static String monthYear(DateTime date) => _monthYear.format(date);
+  static String dayInFull(DateTime date) => _dayInFull.format(date);
+}
 
 /// Groups stamps by (year, month), newest month first, newest day first.
 List<MonthGroup> groupByMonth(List<Stamp> stamps) {
@@ -43,8 +47,9 @@ List<MonthGroup> groupByMonth(List<Stamp> stamps) {
   final keys = byKey.keys.toList()..sort((a, b) => b.compareTo(a));
   return keys.map((k) {
     final list = byKey[k]!..sort((a, b) => b.date.compareTo(a.date));
-    final year = k ~/ 100;
-    final month = k % 100;
-    return MonthGroup(label: '${_monthNames[month]} $year', stamps: list);
+    return MonthGroup(
+      label: StampDateFormat.monthYear(list.first.date),
+      stamps: list,
+    );
   }).toList();
 }

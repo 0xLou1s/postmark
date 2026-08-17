@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-// macOS/desktop: camera_avfoundation is iOS-only — use image_picker instead.
-// Also falls back to picker when camera reports no-camera error (e.g. simulator).
+/// Desktop has no `camera` implementation (camera_avfoundation is iOS-only), so
+/// those platforms pick from the gallery instead. A device that reports no camera
+/// at runtime — a simulator, say — falls back separately, in MachineScreen.
 bool get usesGalleryPicker =>
     !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);

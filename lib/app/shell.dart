@@ -3,8 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../core/widgets/postmark_nav.dart';
 
-/// Hosts the active branch (Stamp / Book) with a persistent pill nav floating
-/// at the bottom. Each branch keeps its own navigation state.
+/// Hosts the active branch (Stamp / Book) under a persistent nav. Each branch
+/// keeps its own navigation state.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
 

@@ -3,17 +3,15 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// Resolves where stamp images live.
+/// Where stamp images live.
 ///
-/// Paths are stored in SQLite relative to the documents directory and resolved
-/// to absolute on read: the absolute path of that directory changes between
-/// installs and after an iOS backup restore, so storing absolute paths would
-/// break every image.
+/// Paths are stored relative and resolved on read: the documents directory's
+/// absolute path changes between installs and after a backup restore, so
+/// absolute paths would break every image.
 class StampPaths {
   StampPaths(this.documentsDir);
 
-  /// Uses the real app documents directory. Tests construct [StampPaths]
-  /// directly with a temp directory instead.
+  /// Tests construct [StampPaths] directly with a temp directory instead.
   static Future<StampPaths> forApp() async =>
       StampPaths(await getApplicationDocumentsDirectory());
 
@@ -34,8 +32,7 @@ class StampPaths {
   String absoluteFor(String relativePath) =>
       p.join(documentsDir.path, relativePath);
 
-  /// The id encoded in a stamp filename — the inverse of [relativeFor].
-  /// Filename and id are the same value, which is what lets an orphaned file
-  /// be adopted back under the id it already had.
+  /// The inverse of [relativeFor]. Filename and id are the same value, which is
+  /// what lets an orphaned file be adopted back under the id it already had.
   String idForFile(File file) => p.basenameWithoutExtension(file.path);
 }

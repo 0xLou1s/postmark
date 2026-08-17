@@ -5,13 +5,12 @@ import '../../core/constants/app_durations.dart';
 import 'gallery_picker.dart';
 import 'machine_controller.dart';
 
-/// Owns both capture paths — live camera and gallery — and the transient UI
-/// state around them: whether a capture is in flight, whether the machine is
-/// pressed down, and the image currently ejecting from the slot.
+/// Both capture paths — live camera and gallery — and the transient UI state
+/// around them: whether a capture is in flight, whether the machine is pressed
+/// down, and the image ejecting from the slot.
 ///
-/// Both entry points latch [busy] themselves and refuse to run while another
-/// capture is in flight. On success the caller must call [reset] once it has
-/// finished with the returned bytes.
+/// Both entry points latch [busy] and refuse to run while a capture is in
+/// flight. On success the caller must call [reset] when done with the bytes.
 class MachineCaptureFlow extends ChangeNotifier {
   MachineCaptureFlow({required TickerProvider vsync}) {
     _ejectAnimation = AnimationController(
@@ -46,13 +45,11 @@ class MachineCaptureFlow extends ChangeNotifier {
   }
 
   /// Presses the machine down, captures a frame cropped to the bezel window,
-  /// then releases and settles. Returns null if a capture is already running or
-  /// the capture failed; the caller must call [reset] once it has finished with
-  /// a successful result.
+  /// then releases and settles. Null if a capture is already running or failed.
   ///
-  /// Runs to completion even if the caller is torn down mid-sequence — the
-  /// bytes are simply discarded. Aborting early would mean handing this class a
-  /// view of the widget lifecycle, which is what it exists to stay clear of.
+  /// Runs to completion even if the caller is torn down mid-sequence, discarding
+  /// the bytes; aborting early would mean giving this class a view of the widget
+  /// lifecycle, which is what it exists to stay clear of.
   Future<Uint8List?> captureFromCamera(
     MachineController controller, {
     required Rect? windowRect,
@@ -80,9 +77,8 @@ class MachineCaptureFlow extends ChangeNotifier {
     return bytes;
   }
 
-  /// Opens the gallery. Returns null if a capture is already running or the
-  /// user cancelled; the caller must call [reset] once it has finished with a
-  /// successful result.
+  /// Opens the gallery. Null if a capture is already running or the user
+  /// cancelled.
   Future<Uint8List?> pickFromGallery() async {
     if (_busy) return null;
     _setBusy(true);
@@ -95,8 +91,8 @@ class MachineCaptureFlow extends ChangeNotifier {
     return bytes;
   }
 
-  /// Runs the eject animation with [bytes] showing in the slot, leaving the
-  /// image on screen when it completes so the caller can navigate over it.
+  /// Leaves the image on screen when it completes, so the caller can navigate
+  /// over it.
   Future<void> eject(Uint8List bytes) async {
     if (_disposed) return;
     _ejectImage = bytes;

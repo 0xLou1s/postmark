@@ -14,7 +14,4 @@ class AppColors {
 
   /// Muted text/icons over a dark viewfinder.
   static const hintText = Colors.white38;
-
-  /// Peak opacity of the scrim behind the ejecting stamp.
-  static const double scrimMaxOpacity = 0.35;
 }

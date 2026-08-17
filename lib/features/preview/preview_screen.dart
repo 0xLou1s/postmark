@@ -37,22 +37,20 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      // Stay on the preview so the bytes are still in hand and the user can
-      // retry; the image is never dropped silently.
+      // Stays on the preview, so the bytes are still in hand for a retry.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Couldn't save that stamp. Try again.")),
       );
       return;
     }
     if (!mounted) return;
-    // Leave the Stamp branch's stack before switching branches — go() alone
-    // would leave this screen on it, so returning to Stamp would show the
-    // preview again instead of the camera.
+    // Off the Stamp branch's stack before switching: go() alone would leave this
+    // screen on it, so returning to Stamp would show the preview, not the camera.
     Navigator.of(context).pop();
     context.go('/book');
   }
 
-  void _retake() => Navigator.of(context).pop(); // back to machine
+  void _retake() => Navigator.of(context).pop();
 
   @override
   Widget build(BuildContext context) {

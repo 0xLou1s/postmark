@@ -9,16 +9,9 @@ import '../domain/stamp.dart';
 import 'stamp_database.dart';
 import 'stamp_paths.dart';
 
-/// Where stamps are kept.
-///
-/// This exists for one narrow reason: `sqflite` cannot run under `testWidgets`
-/// — the ffi factory hangs on the Flutter test binding — so widget tests that
-/// only care about navigation need a seam that avoids SQLite entirely.
-///
-/// It is deliberately NOT a seam for testing persistence. The durability rules
-/// live in [SqliteStampStore] and are covered against a real database in
-/// `test/data/stamp_store_test.dart`; a fake would have none of that behaviour
-/// and testing against one would assert on code the app never runs.
+/// Exists so widget tests can avoid SQLite — `sqflite` hangs under the Flutter
+/// test binding. Not a seam for testing persistence: that is covered against a
+/// real database in `test/data/stamp_store_test.dart`.
 abstract class StampStore {
   Future<void> open();
   Future<void> close();
@@ -27,46 +20,66 @@ abstract class StampStore {
   Future<void> reconcile();
 }
 
-/// Durable storage for stamps: JPEG bytes on disk, metadata in SQLite.
+/// Older than this, a `.tmp` file is a previous run's debris rather than a
+/// capture still being written.
+const _staleTempFileAge = Duration(minutes: 1);
+
+/// JPEG bytes on disk, metadata in SQLite.
 ///
-/// The invariant behind every method here is that image bytes matter more than
-/// metadata. A photo the user chose to keep is the one thing the app must not
-/// lose, so writes are ordered to make the recoverable failure the only
-/// reachable one.
+/// Image bytes matter more than metadata: writes are ordered so the only
+/// reachable failure is the recoverable one.
 class SqliteStampStore implements StampStore {
   SqliteStampStore(this._paths);
 
   final StampPaths _paths;
   static const _uuid = Uuid();
 
-  late final Database _db;
-  late final Directory _stampsDir;
+  Database? _database;
+  Directory? _stampsDir;
 
+  /// Fails here rather than deep inside sqflite, so callers get the error they
+  /// already handle for a failed write.
+  Database get _db => _requireOpen();
+
+  Database _requireOpen() {
+    final db = _database;
+    if (db == null) {
+      throw StateError('The stamp book is unavailable; storage failed to open');
+    }
+    return db;
+  }
+
+  /// Idempotent, so a hot restart or a rebuilt provider can re-enter it.
   @override
   Future<void> open() async {
+    if (_database != null) return;
     _stampsDir = await _paths.ensureStampsDir();
-    _db = await StampDatabase.open(
+    _database = await StampDatabase.open(
       p.join(_paths.documentsDir.path, StampDatabase.fileName),
     );
   }
 
   @override
-  Future<void> close() => _db.close();
+  Future<void> close() async {
+    await _database?.close();
+    _database = null;
+    _stampsDir = null;
+  }
 
-  /// Persists [image] and returns the resulting stamp.
-  ///
-  /// The file is written before the row is inserted. Crashing between the two
-  /// leaves an image with no row, which startup reconciliation adopts back;
-  /// the reverse order would leave a row pointing at nothing, losing the photo.
+  /// The file is written before the row: crashing between the two leaves an
+  /// image [reconcile] adopts back, where the reverse order would lose the photo.
   @override
   Future<Stamp> save({required Uint8List image, String? caption}) async {
+    // Before the write, so an unusable store leaves no stray image on disk.
+    _requireOpen();
+
     final id = _uuid.v4();
     final relativePath = _paths.relativeFor(id);
     final absolutePath = _paths.absoluteFor(relativePath);
-    // Truncated to millisecond precision so the returned stamp matches what
-    // a reload produces — SQLite stores millisecondsSinceEpoch, not micros.
-    final date =
-        DateTime.fromMillisecondsSinceEpoch(DateTime.now().millisecondsSinceEpoch);
+    // Millisecond precision, so the returned stamp matches what a reload gives.
+    final date = DateTime.fromMillisecondsSinceEpoch(
+      DateTime.now().millisecondsSinceEpoch,
+    );
 
     await _writeImage(absolutePath, image);
 
@@ -74,36 +87,21 @@ class SqliteStampStore implements StampStore {
     final storedCaption =
         (trimmed != null && trimmed.isNotEmpty) ? trimmed : null;
 
-    // Wrapped in a transaction even though a single insert is already atomic:
-    // this is the boundary future multi-row writes (tags, caption history,
-    // thumbnails, a search index) will land inside, so it belongs here now
-    // rather than being retrofitted later. Don't simplify this to a bare
-    // insert.
     try {
-      if (_failNextInsert) {
-        _failNextInsert = false;
-        throw Exception('insert failed');
-      }
-      await _db.transaction((txn) async {
-        await txn.insert(StampDatabase.table, {
-          StampDatabase.columnId: id,
-          StampDatabase.columnImagePath: relativePath,
-          StampDatabase.columnDate: date.millisecondsSinceEpoch,
-          StampDatabase.columnCaption: storedCaption,
-        });
-      });
+      await _insertStamp(
+        id: id,
+        relativePath: relativePath,
+        date: date,
+        caption: storedCaption,
+      );
     } catch (_) {
-      // The row never landed, so this file would be adopted as a separate,
-      // captionless stamp on the next launch — and a retry writes its own copy,
-      // leaving the same photo in the book twice. Dropping it is safe here and
-      // only here: the caller still holds the bytes in memory and is about to
-      // be told the save failed, so nothing is lost by removing the file.
-      // Reconciliation must never do this, because there the bytes on disk are
-      // the only remaining copy.
+      // Without this the file is adopted as its own stamp later, so a retry puts
+      // the photo in the book twice. Safe only here: the caller still holds the
+      // bytes. Reconciliation must never delete, where disk is the last copy.
       try {
         await File(absolutePath).delete();
       } catch (_) {
-        // Leave it for reconciliation: a duplicate stamp beats a lost photo.
+        // Leave it for reconciliation: a duplicate beats a lost photo.
       }
       rethrow;
     }
@@ -116,13 +114,31 @@ class SqliteStampStore implements StampStore {
     );
   }
 
-  /// Writes bytes through a temp file, then renames into place.
+  /// The transaction is the boundary future multi-row writes (tags, thumbnails,
+  /// a search index) land inside. Don't simplify it to a bare insert.
   ///
-  /// The rename is atomic within a filesystem, so the final `.jpg` is either
-  /// absent or complete — a half-written JPEG is never observable. The temp
-  /// file must sit in the same directory as its destination; putting it in the
-  /// system temp directory would cross filesystems and silently degrade the
-  /// rename into a copy.
+  /// Overridden in tests to fail after the image is on disk.
+  @protected
+  @visibleForOverriding
+  Future<void> insertStamp(Map<String, Object?> values) =>
+      _db.transaction((txn) => txn.insert(StampDatabase.table, values));
+
+  Future<void> _insertStamp({
+    required String id,
+    required String relativePath,
+    required DateTime date,
+    required String? caption,
+  }) =>
+      insertStamp({
+        StampDatabase.columnId: id,
+        StampDatabase.columnImagePath: relativePath,
+        StampDatabase.columnDate: date.millisecondsSinceEpoch,
+        StampDatabase.columnCaption: caption,
+      });
+
+  /// Renaming is atomic within a filesystem, so the `.jpg` is never half
+  /// written. The temp file must stay in the destination's directory — the
+  /// system temp dir would cross filesystems and degrade this into a copy.
   Future<void> _writeImage(String absolutePath, Uint8List bytes) async {
     final temp = File('$absolutePath.tmp');
     await temp.writeAsBytes(bytes, flush: true);
@@ -151,15 +167,22 @@ class SqliteStampStore implements StampStore {
 
   /// Repairs disagreements between the `stamps/` directory and the table.
   ///
-  /// Decisions are made purely on file *existence*; no image is ever opened or
-  /// decoded. A file that exists but cannot be read keeps its row, because one
-  /// bad read — possibly transient — must not delete the user's only record of
-  /// a photo.
+  /// Decided on file existence alone — never a decode, since one bad read may be
+  /// transient and must not delete the user's only record of a photo.
   ///
-  /// Idempotent: filename and id are the same value, so a file adopted on one
-  /// pass already has a row on the next and is no longer an orphan.
+  /// Idempotent: filename and id are the same value, so an adopted file already
+  /// has a row on the next pass.
   @override
   Future<void> reconcile() async {
+    final knownIds = await _dropRowsWithNoImage();
+    await for (final entity in _stampsDir!.list()) {
+      if (entity is! File) continue;
+      await _reconcileFile(entity, knownIds);
+    }
+  }
+
+  /// Deletes rows whose image is gone, returning the ids that still have one.
+  Future<Set<String>> _dropRowsWithNoImage() async {
     final rows = await _db.query(
       StampDatabase.table,
       columns: [StampDatabase.columnId, StampDatabase.columnImagePath],
@@ -175,67 +198,50 @@ class SqliteStampStore implements StampStore {
         await _deleteRow(id);
       }
     }
+    return knownIds;
+  }
 
-    await for (final entity in _stampsDir.list()) {
-      if (entity is! File) continue;
-      final name = p.basename(entity.path);
+  Future<void> _reconcileFile(File file, Set<String> knownIds) async {
+    final name = p.basename(file.path);
 
-      // Interrupted writes may hold a partial JPEG; they are not photos yet.
-      // Only sweep ones left by an earlier run: a save happening right now owns
-      // its temp file, and deleting it mid-write would destroy a live capture.
-      if (name.endsWith('.tmp')) {
-        final age = DateTime.now().difference(await entity.lastModified());
-        if (age > const Duration(minutes: 1)) await entity.delete();
-        continue;
-      }
-      if (p.extension(name) != '.jpg') continue;
+    // Only debris from an earlier run: an in-flight save owns its temp file, and
+    // deleting it mid-write would destroy a live capture.
+    if (name.endsWith('.tmp')) {
+      final age = DateTime.now().difference(await file.lastModified());
+      if (age > _staleTempFileAge) await file.delete();
+      return;
+    }
+    if (p.extension(name) != '.jpg') return;
 
-      final id = _paths.idForFile(entity);
-      if (knownIds.contains(id)) continue;
+    final id = _paths.idForFile(file);
+    if (knownIds.contains(id)) return;
 
-      if (_beforeAdopt != null) await _beforeAdopt!();
-
-      // One unadoptable file must not abort the sweep. reconcile() runs during
-      // startup, so letting a single bad file throw would leave every other
-      // stamp unrecovered — losing access to the whole book over one stray.
-      // The file is left on disk for a later pass rather than deleted.
-      // One unadoptable file must not abort the sweep. reconcile() runs during
-      // startup, so letting a single bad file throw would leave every other
-      // stamp unrecovered — losing access to the whole book over one stray.
-      // The file is left on disk for a later pass rather than deleted.
-      try {
-        await _adopt(entity, id);
-      } catch (error, stack) {
-        FlutterError.reportError(FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'postmark',
-          context: ErrorDescription('adopting ${p.basename(entity.path)}'),
-        ));
-      }
+    // This runs at startup, so one bad file must not abort the sweep and cost
+    // the user the rest of the book. It stays on disk for a later pass.
+    try {
+      await adoptFile(file, id);
+    } catch (error, stack) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'postmark',
+        context: ErrorDescription('adopting $name'),
+      ));
     }
   }
 
-  /// Runs just before each adoption, to simulate a file disappearing or an I/O
-  /// error mid-sweep. Tests only.
-  @visibleForTesting
-  Future<void> debugOnBeforeAdopt(Future<void> Function() hook) async =>
-      _beforeAdopt = hook;
-
-  Future<void> Function()? _beforeAdopt;
-
-  /// Re-creates a row for an image that has none.
+  /// Re-creates a row for an image that has none. The date is the file's mtime,
+  /// which restores and copies rewrite — an approximate date beats no photo.
   ///
-  /// The date comes from the file's modification time, which is best-effort
-  /// rather than the original capture time — backup restores and manual copies
-  /// both rewrite it. An approximate date beats dropping the photo.
-  Future<void> _adopt(File file, String id) async {
+  /// Overridden in tests to simulate a file vanishing mid-sweep.
+  @protected
+  @visibleForOverriding
+  Future<void> adoptFile(File file, String id) async {
     var adoptedFile = file;
     var adoptedId = id;
 
-    // Nothing the app writes is named this way, but a restore or a manual copy
-    // can produce one. Renaming keeps filename and id the same value, so the
-    // next sweep sees it as settled.
+    // A restore or manual copy can leave a non-uuid name. Renaming keeps
+    // filename and id equal, so the next sweep sees it as settled.
     if (!Uuid.isValidUUID(fromString: id)) {
       adoptedId = _uuid.v4();
       adoptedFile =
@@ -244,8 +250,8 @@ class SqliteStampStore implements StampStore {
 
     final modified = await adoptedFile.lastModified();
 
-    // OR REPLACE so a sweep interrupted partway cannot make the next startup
-    // throw on a primary-key collision.
+    // OR REPLACE so an interrupted sweep can't collide on the primary key next
+    // startup.
     await _db.insert(
       StampDatabase.table,
       {
@@ -258,21 +264,14 @@ class SqliteStampStore implements StampStore {
     );
   }
 
+  /// Drops a row but keeps its image — the crash state [save] is ordered to make
+  /// the only reachable one. Tests only.
+  @visibleForTesting
+  Future<void> debugDeleteRow(String id) => _deleteRow(id);
+
   Future<void> _deleteRow(String id) => _db.delete(
         StampDatabase.table,
         where: '${StampDatabase.columnId} = ?',
         whereArgs: [id],
       );
-
-  /// Drops a row while leaving its image in place, reproducing the crash state
-  /// that [save] is ordered to make the only reachable one. Tests only.
-  @visibleForTesting
-  Future<void> debugDeleteRow(String id) => _deleteRow(id);
-
-  /// Makes the next [save] fail at the insert, after its image is on disk.
-  /// Tests only.
-  @visibleForTesting
-  Future<void> debugFailNextInsert() async => _failNextInsert = true;
-
-  bool _failNextInsert = false;
 }

@@ -2,14 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/perforated_border.dart';
 import '../machine_metrics.dart';
 import 'machine_frame.dart';
 
-/// The cut-out stamp ejecting up out of the slot over the bezel, with the
-/// window left black. Anchored to the same spot as the live frame so it
-/// reads as the same machine.
+/// The cut-out stamp ejecting up out of the slot, anchored to the same spot as
+/// the live frame so it reads as the same machine.
 class EjectOverlay extends StatelessWidget {
   const EjectOverlay({
     super.key,
@@ -20,6 +18,9 @@ class EjectOverlay extends StatelessWidget {
   final Animation<double> animation;
   final Uint8List image;
 
+  /// Peak opacity of the scrim behind the ejecting stamp.
+  static const _scrimMaxOpacity = 0.35;
+
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
@@ -28,9 +29,7 @@ class EjectOverlay extends StatelessWidget {
         builder: (context, _) {
           final t = animation.value.clamp(0.0, 1.0);
           return ColoredBox(
-            color: Colors.black.withValues(
-              alpha: AppColors.scrimMaxOpacity * t,
-            ),
+            color: Colors.black.withValues(alpha: _scrimMaxOpacity * t),
             child: Padding(
               padding: MachineMetrics.insets,
               child: Center(

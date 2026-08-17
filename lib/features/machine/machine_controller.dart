@@ -20,25 +20,22 @@ class MachineController extends ChangeNotifier {
   List<CameraDescription> _cameras = const [];
   CameraLensDirection _lensDirection = CameraLensDirection.back;
 
-  /// Whether the flip button should be tappable. True when there are multiple
-  /// cameras, or when the list isn't loaded yet (e.g. the controller survived a
-  /// hot reload) — in that case [switchCamera] loads it lazily and no-ops if it
-  /// turns out there's only one.
+  /// True with multiple cameras, or before the list has loaded — [switchCamera]
+  /// then loads it lazily and no-ops if there turns out to be only one.
   bool get canSwitchCamera => _cameras.isEmpty || _cameras.length > 1;
   CameraLensDirection get lensDirection => _lensDirection;
   bool switching = false;
 
-  /// Flash mode applied to captures. Defaults to off so the front camera no
-  /// longer fires automatically; cycled off → auto → always by the user.
+  /// Defaults to off so the front camera never fires automatically.
   FlashMode flashMode = FlashMode.off;
 
-  /// Current zoom level. Kept in a [ValueNotifier] so only the zoom badge
-  /// rebuilds on change — pinching must not rebuild the camera preview/overlay.
+  /// In a [ValueNotifier] so pinching rebuilds only the zoom badge, never the
+  /// preview or overlay.
   final ValueNotifier<double> zoomNotifier = ValueNotifier(1.0);
   double get zoom => zoomNotifier.value;
 
-  // Coalesces rapid pinch updates into one in-flight setZoomLevel call so the
-  // platform channel isn't flooded (the source of the stutter).
+  // Coalesces rapid pinch updates into one in-flight setZoomLevel call, so the
+  // platform channel isn't flooded — that flooding is what caused the stutter.
   double _targetZoom = 1.0;
   double _appliedZoom = 1.0;
   bool _applyingZoom = false;
@@ -66,8 +63,8 @@ class MachineController extends ChangeNotifier {
     }
   }
 
-  /// Disposes any current controller and opens [description], refreshing the
-  /// zoom range. Assumes the caller handles error/notify around it.
+  /// Opens [description], disposing any current controller. The caller handles
+  /// error reporting and notification around it.
   Future<void> _open(CameraDescription description) async {
     await controller?.dispose();
     controller = null;
@@ -80,8 +77,8 @@ class MachineController extends ChangeNotifier {
     _targetZoom = minZoom;
     _appliedZoom = minZoom;
     _lensDirection = description.lensDirection;
-    // Flash mode is per-controller, so re-apply it after (re)opening a lens.
-    // Some lenses (e.g. most front cameras) have no flash — ignore failures.
+    // Flash is per-controller, so re-apply on every open. Most front cameras
+    // have none, so failure is expected.
     try {
       await c.setFlashMode(flashMode);
     } catch (_) {}
@@ -131,9 +128,8 @@ class MachineController extends ChangeNotifier {
     }
   }
 
-  /// Sets the camera zoom, clamped to the supported range. Updates the badge
-  /// immediately and applies the level natively without rebuilding the tree;
-  /// rapid pinch updates are coalesced so the platform channel isn't flooded.
+  /// Updates the badge immediately and applies the level natively without
+  /// rebuilding the tree.
   void setZoom(double value) {
     final c = controller;
     if (c == null || !c.value.isInitialized) return;
@@ -149,8 +145,8 @@ class MachineController extends ChangeNotifier {
     if (c == null) return;
     _applyingZoom = true;
     try {
-      // Always apply the latest target; skip the intermediate values that
-      // piled up while a previous setZoomLevel was in flight.
+      // Skips the intermediate values that piled up while the previous call was
+      // in flight.
       while ((_targetZoom - _appliedZoom).abs() > 0.001) {
         _appliedZoom = _targetZoom;
         await c.setZoomLevel(_appliedZoom);
@@ -160,12 +156,11 @@ class MachineController extends ChangeNotifier {
     }
   }
 
-  /// Whether the active lens is the front (selfie) camera, whose preview is
-  /// mirrored — captures must be flipped back to match what the user saw.
+  /// The front preview is mirrored, so its captures must be flipped back to
+  /// match what the user saw.
   bool get _isFront => _lensDirection == CameraLensDirection.front;
 
-  /// Captures a frame and returns its JPEG bytes. Front-camera shots are
-  /// un-mirrored so the result matches the preview.
+  /// A frame as JPEG bytes, un-mirrored for the front camera.
   Future<Uint8List?> capture() async {
     final c = controller;
     if (c == null || !c.value.isInitialized) return null;
@@ -175,13 +170,11 @@ class MachineController extends ChangeNotifier {
     return compute(cropJpeg, CropRequest(bytes, 0, 0, 1, 1, flipH: true));
   }
 
-  /// Captures a full-resolution photo and crops it to exactly the part of the
-  /// live preview that was visible through [windowRect] (the machine's window),
-  /// given a full-screen preview rendered with [BoxFit.cover] over [screenSize].
+  /// A full-resolution photo cropped to whatever was visible through
+  /// [windowRect], given a [BoxFit.cover] preview over [screenSize].
   ///
-  /// The preview and the captured photo share the same field of view, so we
-  /// express the window as fractions of the cover-fitted preview and apply the
-  /// same fractions to the captured image's pixels.
+  /// Preview and photo share a field of view, so the window is expressed as
+  /// fractions of the cover-fitted preview and applied to the photo's pixels.
   Future<Uint8List?> captureCropped({
     required Rect windowRect,
     required Size screenSize,
@@ -212,9 +205,7 @@ class MachineController extends ChangeNotifier {
     final v1 = ((windowRect.bottom - offY) / dispH).clamp(0.0, 1.0);
     if (u1 <= u0 || v1 <= v0) return bytes;
 
-    // Decode + crop off the UI isolate — full-res JPEGs are heavy. Front-camera
-    // shots are flipped so the crop (measured on the mirrored preview) lines up
-    // and the result matches what the user saw.
+    // Off the UI isolate: full-res JPEGs are heavy to decode.
     return compute(
       cropJpeg,
       CropRequest(bytes, u0, v0, u1, v1, flipH: _isFront),
@@ -229,9 +220,7 @@ class MachineController extends ChangeNotifier {
   }
 }
 
+// ChangeNotifierProvider disposes the notifier itself; adding ref.onDispose
+// would dispose it twice and throw.
 final machineControllerProvider =
-    ChangeNotifierProvider<MachineController>((ref) {
-  // ChangeNotifierProvider already disposes the returned notifier on teardown;
-  // adding ref.onDispose(m.dispose) would dispose it twice and throw.
-  return MachineController();
-});
+    ChangeNotifierProvider<MachineController>((ref) => MachineController());

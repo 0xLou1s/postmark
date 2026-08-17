@@ -27,9 +27,12 @@ class _FakeStampStore implements StampStore {
   /// Set to make [open] throw, as a locked or corrupt database would.
   bool failOnOpen = false;
 
+  var _opened = false;
+
   @override
   Future<void> open() async {
     if (failOnOpen) throw Exception('database locked');
+    _opened = true;
   }
 
   @override
@@ -43,6 +46,9 @@ class _FakeStampStore implements StampStore {
 
   @override
   Future<Stamp> save({required Uint8List image, String? caption}) async {
+    // Mirrors SqliteStampStore, which refuses to touch a store that never
+    // opened rather than throwing from deep inside sqflite.
+    if (!_opened) throw StateError('the stamp book is unavailable');
     if (failOnSave) throw Exception('disk full');
     final trimmed = caption?.trim();
     final stamp = Stamp(
