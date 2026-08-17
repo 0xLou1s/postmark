@@ -24,11 +24,27 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     super.dispose();
   }
 
-  void _save() {
-    ref.read(stampRepositoryProvider.notifier).add(
-          image: widget.image,
-          caption: _caption.text,
-        );
+  bool _saving = false;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(stampRepositoryProvider.notifier).add(
+            image: widget.image,
+            caption: _caption.text,
+          );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      // Stay on the preview so the bytes are still in hand and the user can
+      // retry; the image is never dropped silently.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't save that stamp. Try again.")),
+      );
+      return;
+    }
+    if (!mounted) return;
     // Leave the Stamp branch's stack before switching branches — go() alone
     // would leave this screen on it, so returning to Stamp would show the
     // preview again instead of the camera.
@@ -86,7 +102,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _retake,
+                      onPressed: _saving ? null : _retake,
                       style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 18)),
                       child: const Text('Retake'),
@@ -95,10 +111,16 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _save,
+                      onPressed: _saving ? null : _save,
                       style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 18)),
-                      child: const Text('Save to Book'),
+                      child: _saving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Save to Book'),
                     ),
                   ),
                 ],
