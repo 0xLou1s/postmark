@@ -92,4 +92,109 @@ void main() {
     expect(File(loaded.single.imagePath).existsSync(), isTrue);
     await movedStore.close();
   });
+
+  test('an orphaned image is adopted back into the book', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'orphan');
+    // Drop the row but keep the file — the crash state save() is designed for.
+    await store.debugDeleteRow(saved.id);
+    await store.close();
+
+    final reopened = await openStore();
+    await reopened.reconcile();
+    final loaded = await reopened.loadAll();
+
+    expect(loaded, hasLength(1));
+    expect(loaded.single.id, saved.id, reason: 'id comes from the filename');
+    expect(loaded.single.caption, isNull, reason: 'the caption was in the row');
+    expect(File(loaded.single.imagePath).existsSync(), isTrue);
+    await reopened.close();
+  });
+
+  test('a row whose file is gone is dropped', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes);
+    await File(saved.imagePath).delete();
+    await store.reconcile();
+
+    expect(await store.loadAll(), isEmpty);
+    await store.close();
+  });
+
+  test('a stale interrupted write is deleted, not adopted', () async {
+    final store = await openStore();
+    final stray = File(p.join(docs.path, 'stamps', 'half-written.jpg.tmp'));
+    await stray.writeAsBytes(_bytes);
+    // Backdate it past the grace period so it reads as a previous run's debris.
+    await stray.setLastModified(
+      DateTime.now().subtract(const Duration(hours: 1)),
+    );
+
+    await store.reconcile();
+
+    expect(await store.loadAll(), isEmpty);
+    expect(stray.existsSync(), isFalse);
+    await store.close();
+  });
+
+  test('a temp file from an in-flight save is left alone', () async {
+    final store = await openStore();
+    final inFlight = File(p.join(docs.path, 'stamps', 'being-written.jpg.tmp'));
+    await inFlight.writeAsBytes(_bytes);
+
+    await store.reconcile();
+
+    // Deleting this would destroy a capture that is still being written.
+    expect(inFlight.existsSync(), isTrue);
+    expect(await store.loadAll(), isEmpty);
+    await store.close();
+  });
+
+  test('an unreadable image keeps its row', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'corrupt');
+    // The file exists but holds no valid image. Reconciliation must not treat
+    // a decode failure as a missing file — that would delete the user's only
+    // record of the photo, and the failure may be transient.
+    await File(saved.imagePath).writeAsString('not an image');
+
+    await store.reconcile();
+    final loaded = await store.loadAll();
+
+    expect(loaded, hasLength(1));
+    expect(loaded.single.caption, 'corrupt');
+    await store.close();
+  });
+
+  test('a file with a non-uuid name is adopted and renamed', () async {
+    final store = await openStore();
+    final stray = File(p.join(docs.path, 'stamps', 'from-a-backup.jpg'));
+    await stray.writeAsBytes(_bytes);
+
+    await store.reconcile();
+    final loaded = await store.loadAll();
+
+    expect(loaded, hasLength(1));
+    expect(p.basenameWithoutExtension(loaded.single.imagePath), loaded.single.id,
+        reason: 'the file is renamed so filename and id stay the same value');
+    expect(File(loaded.single.imagePath).existsSync(), isTrue);
+    expect(stray.existsSync(), isFalse);
+    await store.close();
+  });
+
+  test('reconcile is idempotent', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'kept');
+    await store.debugDeleteRow(saved.id);
+
+    await store.reconcile();
+    final afterFirst = await store.loadAll();
+    await store.reconcile();
+    final afterSecond = await store.loadAll();
+
+    expect(afterFirst, hasLength(1));
+    expect(afterSecond, hasLength(1), reason: 'no duplicate row, no re-adoption');
+    expect(afterSecond.single.id, afterFirst.single.id);
+    await store.close();
+  });
 }

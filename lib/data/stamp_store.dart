@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -22,9 +22,10 @@ class StampStore {
   static const _uuid = Uuid();
 
   late final Database _db;
+  late final Directory _stampsDir;
 
   Future<void> open() async {
-    await _paths.ensureStampsDir();
+    _stampsDir = await _paths.ensureStampsDir();
     _db = await StampDatabase.open(
       p.join(_paths.documentsDir.path, StampDatabase.fileName),
     );
@@ -105,4 +106,96 @@ class StampStore {
         ),
         caption: row[StampDatabase.columnCaption] as String?,
       );
+
+  /// Repairs disagreements between the `stamps/` directory and the table.
+  ///
+  /// Decisions are made purely on file *existence*; no image is ever opened or
+  /// decoded. A file that exists but cannot be read keeps its row, because one
+  /// bad read — possibly transient — must not delete the user's only record of
+  /// a photo.
+  ///
+  /// Idempotent: filename and id are the same value, so a file adopted on one
+  /// pass already has a row on the next and is no longer an orphan.
+  Future<void> reconcile() async {
+    final rows = await _db.query(
+      StampDatabase.table,
+      columns: [StampDatabase.columnId, StampDatabase.columnImagePath],
+    );
+
+    final knownIds = <String>{};
+    for (final row in rows) {
+      final id = row[StampDatabase.columnId]! as String;
+      final relativePath = row[StampDatabase.columnImagePath]! as String;
+      if (File(_paths.absoluteFor(relativePath)).existsSync()) {
+        knownIds.add(id);
+      } else {
+        await _deleteRow(id);
+      }
+    }
+
+    await for (final entity in _stampsDir.list()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+
+      // Interrupted writes may hold a partial JPEG; they are not photos yet.
+      // Only sweep ones left by an earlier run: a save happening right now owns
+      // its temp file, and deleting it mid-write would destroy a live capture.
+      if (name.endsWith('.tmp')) {
+        final age = DateTime.now().difference(await entity.lastModified());
+        if (age > const Duration(minutes: 1)) await entity.delete();
+        continue;
+      }
+      if (p.extension(name) != '.jpg') continue;
+
+      final id = _paths.idForFile(entity);
+      if (knownIds.contains(id)) continue;
+
+      await _adopt(entity, id);
+    }
+  }
+
+  /// Re-creates a row for an image that has none.
+  ///
+  /// The date comes from the file's modification time, which is best-effort
+  /// rather than the original capture time — backup restores and manual copies
+  /// both rewrite it. An approximate date beats dropping the photo.
+  Future<void> _adopt(File file, String id) async {
+    var adoptedFile = file;
+    var adoptedId = id;
+
+    // Nothing the app writes is named this way, but a restore or a manual copy
+    // can produce one. Renaming keeps filename and id the same value, so the
+    // next sweep sees it as settled.
+    if (!Uuid.isValidUUID(fromString: id)) {
+      adoptedId = _uuid.v4();
+      adoptedFile =
+          await file.rename(_paths.absoluteFor(_paths.relativeFor(adoptedId)));
+    }
+
+    final modified = await adoptedFile.lastModified();
+
+    // OR REPLACE so a sweep interrupted partway cannot make the next startup
+    // throw on a primary-key collision.
+    await _db.insert(
+      StampDatabase.table,
+      {
+        StampDatabase.columnId: adoptedId,
+        StampDatabase.columnImagePath: _paths.relativeFor(adoptedId),
+        StampDatabase.columnDate: modified.millisecondsSinceEpoch,
+        StampDatabase.columnCaption: null,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> _deleteRow(String id) => _db.delete(
+        StampDatabase.table,
+        where: '${StampDatabase.columnId} = ?',
+        whereArgs: [id],
+      );
+
+  /// Drops a row while leaving its image in place, reproducing the crash state
+  /// that [save] is ordered to make the only reachable one. Tests only.
+  @visibleForTesting
+  Future<void> debugDeleteRow(String id) => _deleteRow(id);
 }
