@@ -25,6 +25,29 @@ class SqliteStampRepository extends StateNotifier<List<Stamp>> {
     state = [...state, stamp];
     return stamp;
   }
+
+  /// State is updated only once the store call succeeds, so a failure leaves
+  /// the book showing exactly what is still on disk.
+  Future<void> remove(Iterable<String> ids) async {
+    final gone = ids.toSet();
+    try {
+      await _store.deleteAll(gone);
+    } catch (_) {
+      // A batch can fail partway, so filtering by [gone] here would drop
+      // stamps that were never deleted. Ask the store what actually survived.
+      try {
+        state = await _store.loadAll();
+      } catch (_) {
+        // The delete's failure is the one the caller can act on; losing it to
+        // a failed reload would leave them with the less useful error.
+      }
+      rethrow;
+    }
+    state = [
+      for (final stamp in state)
+        if (!gone.contains(stamp.id)) stamp,
+    ];
+  }
 }
 
 /// Overridden in `main()` once the documents directory is resolved, and in tests

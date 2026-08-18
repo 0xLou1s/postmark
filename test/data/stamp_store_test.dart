@@ -19,6 +19,16 @@ class _FaultyStampStore extends SqliteStampStore {
   bool failNextInsert = false;
   Future<void> Function()? beforeAdopt;
 
+  /// Ids whose delete throws, keyed to the exception it throws.
+  final Map<String, Object> failDeleteFor = {};
+
+  @override
+  Future<void> delete(String id) async {
+    final failure = failDeleteFor[id];
+    if (failure != null) throw failure;
+    return super.delete(id);
+  }
+
   @override
   Future<void> insertStamp(Map<String, Object?> values) async {
     if (failNextInsert) {
@@ -275,5 +285,121 @@ void main() {
     expect(loaded.single.id, retried.id);
     expect(loaded.single.caption, 'second try');
     await store.close();
+  });
+
+  test('deleting a stamp removes both its file and its row', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'goodbye');
+
+    await store.delete(saved.id);
+
+    expect(await store.loadAll(), isEmpty);
+    expect(File(saved.imagePath).existsSync(), isFalse);
+    await store.close();
+  });
+
+  test('deleting a stamp whose file is already gone still drops the row',
+      () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes);
+    // The file half is already done — a crash mid-delete looks exactly like
+    // this — so the row deletion must still complete rather than throw.
+    await File(saved.imagePath).delete();
+
+    await store.delete(saved.id);
+
+    expect(await store.loadAll(), isEmpty);
+    await store.close();
+  });
+
+  test('deleting an unknown id is a no-op', () async {
+    final store = await openStore();
+    final kept = await store.save(image: _bytes, caption: 'kept');
+
+    // A stale UI can issue a second delete for a stamp that is already gone.
+    await store.delete('not-a-real-id');
+
+    expect((await store.loadAll()).single.id, kept.id);
+    await store.close();
+  });
+
+  test('deleteAll removes every selected stamp', () async {
+    final store = await openStore();
+    final first = await store.save(image: _bytes, caption: 'one');
+    final second = await store.save(image: _bytes, caption: 'two');
+    final kept = await store.save(image: _bytes, caption: 'three');
+
+    await store.deleteAll([first.id, second.id]);
+    final loaded = await store.loadAll();
+
+    expect(loaded, hasLength(1));
+    expect(loaded.single.id, kept.id);
+    expect(File(first.imagePath).existsSync(), isFalse);
+    expect(File(second.imagePath).existsSync(), isFalse);
+    expect(File(kept.imagePath).existsSync(), isTrue);
+    await store.close();
+  });
+
+  test('deleteAll reports the first failure but still deletes the rest',
+      () async {
+    final store = await openStore();
+    final doomed = await store.save(image: _bytes, caption: 'one');
+    final alsoDoomed = await store.save(image: _bytes, caption: 'two');
+    final survivor = await store.save(image: _bytes, caption: 'three');
+
+    final first = Exception('first failure');
+    store.failDeleteFor[doomed.id] = first;
+    store.failDeleteFor[alsoDoomed.id] = Exception('second failure');
+
+    await expectLater(
+      store.deleteAll([doomed.id, alsoDoomed.id, survivor.id]),
+      // The first error wins: a later one must not overwrite what the caller
+      // is told went wrong.
+      throwsA(same(first)),
+    );
+
+    // The failures must not have stranded the ids queued behind them.
+    final loaded = await store.loadAll();
+    expect(loaded, hasLength(2));
+    expect(loaded.map((stamp) => stamp.id), isNot(contains(survivor.id)));
+    expect(File(survivor.imagePath).existsSync(), isFalse);
+    await store.close();
+  });
+
+  test('deleteAll rethrows the failure with its original stack trace',
+      () async {
+    final store = await openStore();
+    final doomed = await store.save(image: _bytes);
+    store.failDeleteFor[doomed.id] = Exception('boom');
+
+    StackTrace? caught;
+    try {
+      await store.deleteAll([doomed.id]);
+    } catch (_, stack) {
+      caught = stack;
+    }
+
+    // Not a stack rooted at deleteAll's rethrow: the frame that actually threw
+    // has to survive, or the report points at the accumulator instead of the
+    // failure.
+    expect(caught.toString(), contains('_FaultyStampStore.delete'));
+    await store.close();
+  });
+
+  test('a deleted stamp does not come back after a crash mid-delete', () async {
+    final store = await openStore();
+    final saved = await store.save(image: _bytes, caption: 'goodbye');
+
+    // The crash state the delete ordering is designed to make the only
+    // reachable one: the file is gone, the row survives. The reverse order
+    // would leave an orphaned file that reconcile() adopts back into the book.
+    await File(saved.imagePath).delete();
+    await store.close();
+
+    final reopened = await openStore();
+    await reopened.reconcile();
+
+    expect(await reopened.loadAll(), isEmpty);
+    await reopened.close();
   });
 }

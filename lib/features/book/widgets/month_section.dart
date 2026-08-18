@@ -4,8 +4,18 @@ import '../../../domain/stamp.dart';
 import 'stamp_tile.dart';
 
 class MonthSection extends StatelessWidget {
-  const MonthSection({super.key, required this.group});
+  const MonthSection({
+    super.key,
+    required this.group,
+    required this.selectedIds,
+    required this.onTapStamp,
+    required this.onLongPressStamp,
+  });
+
   final MonthGroup group;
+  final Set<String> selectedIds;
+  final void Function(Stamp stamp) onTapStamp;
+  final void Function(Stamp stamp) onLongPressStamp;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +35,15 @@ class MonthSection extends StatelessWidget {
           childAspectRatio: kStampAspectRatio,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          children: [for (final s in group.stamps) StampTile(stamp: s)],
+          children: [
+            for (final s in group.stamps)
+              StampTile(
+                stamp: s,
+                selected: selectedIds.contains(s.id),
+                onTap: () => onTapStamp(s),
+                onLongPress: () => onLongPressStamp(s),
+              ),
+          ],
         ),
       ],
     );

@@ -45,6 +45,17 @@ class _FakeStampStore implements StampStore {
   Future<List<Stamp>> loadAll() async => List.of(_stamps);
 
   @override
+  Future<void> delete(String id) async =>
+      _stamps.removeWhere((stamp) => stamp.id == id);
+
+  @override
+  Future<void> deleteAll(Iterable<String> ids) async {
+    for (final id in ids) {
+      await delete(id);
+    }
+  }
+
+  @override
   Future<Stamp> save({required Uint8List image, String? caption}) async {
     // Mirrors SqliteStampStore, which refuses to touch a store that never
     // opened rather than throwing from deep inside sqflite.

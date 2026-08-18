@@ -39,4 +39,25 @@ void main() {
     expect(groups.first.stamps.first.date.day, 10);
     expect(groups.last.label, 'May 2026');
   });
+
+  test('a month with no stamps left has no group', () {
+    final june = Stamp(
+      id: 'a',
+      imagePath: '/fake/a.jpg',
+      date: DateTime(2026, 6, 10),
+    );
+    final july = Stamp(
+      id: 'b',
+      imagePath: '/fake/b.jpg',
+      date: DateTime(2026, 7, 4),
+    );
+
+    // Deleting June's only stamp must take its header with it, not leave an
+    // empty section in the book.
+    final groups = groupByMonth([july]);
+
+    expect(groupByMonth([june, july]), hasLength(2));
+    expect(groups, hasLength(1));
+    expect(groups.single.label, StampDateFormat.monthYear(july.date));
+  });
 }
