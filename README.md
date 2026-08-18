@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="assets/postmark/logo.png" width="120" alt="Postmark logo">
+</p>
 
 # Postmark
 

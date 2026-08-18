@@ -70,10 +70,25 @@ class BookScreen extends ConsumerWidget {
                 elevation: 0,
               ),
         body: groups.isEmpty
-            ? const Center(
-                child: Text('No stamps yet.\nPrint your first one.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.black54)))
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Opacity(
+                      opacity: 0.4,
+                      child: Image.asset(
+                        'assets/postmark/logo.png',
+                        width: 96,
+                        height: 96,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('No stamps yet.\nPrint your first one.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black54)),
+                  ],
+                ),
+              )
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [

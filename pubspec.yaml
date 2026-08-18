@@ -57,6 +57,20 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.4.2+1
+  flutter_launcher_icons: ^0.14.4
+
+# App icons are generated from the logo with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: assets/postmark/logo.png
+  # iOS icons cannot carry an alpha channel, so the transparent logo is
+  # flattened onto the same paper tone the app itself uses.
+  remove_alpha_ios: true
+  background_color_ios: "#F2EFE9"
+  ios: true
+  android: true
+  adaptive_icon_background: "#F2EFE9"
+  adaptive_icon_foreground: assets/postmark/logo.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -71,6 +85,7 @@ flutter:
 
   assets:
     - assets/machine/
+    - assets/postmark/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
