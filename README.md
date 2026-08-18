@@ -24,3 +24,22 @@ it full size with its caption and date.
 
 https://github.com/user-attachments/assets/7ae17a25-a770-4292-a7dc-1e651f1fb885
 
+## Getting started
+
+Requires Flutter with Dart SDK 3.12.2 or newer.
+
+```bash
+git clone https://github.com/0xLou1s/postmark.git
+cd postmark
+flutter pub get
+flutter run
+```
+
+The camera doesn't work on a simulator or emulator — run it on a real device.
+It asks for camera and photo library access the first time you print a stamp.
+
+Tests:
+
+```bash
+flutter test
+```
