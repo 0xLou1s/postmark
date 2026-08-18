@@ -1,3 +1,4 @@
+
 # Postmark
 
 A camera that turns your photos into postage stamps.
@@ -21,8 +22,5 @@ your gallery instead of shooting one.
 **Browse the book.** Stamps are grouped by month, newest first. Tap one to see
 it full size with its caption and date.
 
-## Note
+https://github.com/user-attachments/assets/7ae17a25-a770-4292-a7dc-1e651f1fb885
 
-Stamps are stored on the device — images as files, captions and dates in a
-small database — so the book survives closing the app. Nothing leaves the
-phone, and the stamps do not appear in your photo library.
